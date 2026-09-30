@@ -6,10 +6,10 @@
 
 use crate::derives::*;
 use crate::parser::{Parse, ParserContext};
-use crate::typed_om::{NumericValue, ToTyped, TypedValue, UnitValue};
+use crate::typed_om::{NumericType, NumericValue, ToTyped, TypedValue, UnitValue};
 use crate::values::computed::time::Time as ComputedTime;
 use crate::values::computed::{Context, ToComputedValue};
-use crate::values::specified::calc::{CalcNode, CalcNumeric, Leaf};
+use crate::values::specified::calc::{CalcNode, CalcNumeric, Leaf, PercentageContext};
 use crate::values::tagged_numeric::{NumericUnion, Unpacked};
 use crate::values::CSSFloat;
 use crate::Zero;
@@ -29,6 +29,27 @@ pub enum TimeUnit {
     Second,
     /// `ms`
     Millisecond,
+}
+
+impl TimeUnit {
+    /// Returns the time unit for the given string.
+    #[inline]
+    pub fn from_str(unit: &str) -> Result<Self, ()> {
+        Ok(match_ignore_ascii_case! { unit,
+            "s" => Self::Second,
+            "ms" => Self::Millisecond,
+            _ => return Err(())
+        })
+    }
+
+    /// Returns this unit as a string.
+    #[inline]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Second => "s",
+            Self::Millisecond => "ms",
+        }
+    }
 }
 
 /// A time value according to CSS-VALUES § 6.2.
@@ -70,10 +91,7 @@ impl NoCalcTime {
     /// Returns the unit of the time as a string.
     #[inline]
     pub fn unit(&self) -> &'static str {
-        match self.unit {
-            TimeUnit::Second => "s",
-            TimeUnit::Millisecond => "ms",
-        }
+        self.unit.as_str()
     }
 
     /// Return the unitless, raw value.
@@ -89,11 +107,7 @@ impl NoCalcTime {
 
     /// Convert this value to the specified unit, if possible.
     pub fn to(&self, unit: &str) -> Result<Self, ()> {
-        let target = match_ignore_ascii_case! { unit,
-            "s" => TimeUnit::Second,
-            "ms" => TimeUnit::Millisecond,
-             _ => return Err(()),
-        };
+        let target = TimeUnit::from_str(unit)?;
         let value = match target {
             TimeUnit::Second => self.seconds(),
             TimeUnit::Millisecond => self.seconds() * 1000.0,
@@ -103,11 +117,7 @@ impl NoCalcTime {
 
     /// Parses a time according to CSS-VALUES § 6.2.
     pub fn parse_dimension(value: CSSFloat, unit: &str) -> Result<Self, ()> {
-        let unit = match_ignore_ascii_case! { unit,
-            "s" => TimeUnit::Second,
-            "ms" => TimeUnit::Millisecond,
-            _ => return Err(())
-        };
+        let unit = TimeUnit::from_str(unit)?;
         Ok(Self::new(unit, value))
     }
 }
@@ -141,6 +151,7 @@ impl ToComputedValue for NoCalcTime {
 impl ToTyped for NoCalcTime {
     fn to_typed(&self, dest: &mut ThinVec<TypedValue>) -> Result<(), ()> {
         let numeric_value = NumericValue::Unit(UnitValue {
+            numeric_type: NumericType::time(),
             value: self.unitless_value(),
             unit: CssString::from(self.unit()),
         });
@@ -206,14 +217,13 @@ impl Time {
         self.0.is_boxed()
     }
 
-    fn parse_with_clamping_mode<'i, 't>(
+    fn parse_with_clamping_mode(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         clamping_mode: AllowedNumericType,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         use style_traits::ParsingMode;
 
-        let location = input.current_source_location();
         match *input.next()? {
             // Note that we generally pass ParserContext to is_ok() to check
             // that the ParserMode of the ParserContext allows all numeric
@@ -224,24 +234,30 @@ impl Time {
                 value, ref unit, ..
             } if clamping_mode.is_ok(ParsingMode::DEFAULT, value) => {
                 NoCalcTime::parse_dimension(value, unit)
-                    .map_err(|()| location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+                    .map_err(|()| ParseError::custom(StyleParseErrorKind::UnspecifiedError))
                     .map(Self::new)
             },
             Token::Function(ref name) => {
-                let function = CalcNode::math_function(context, name, location)?;
-                CalcNode::parse_time(context, input, clamping_mode, function)
-                    .map(Box::new)
-                    .map(Self::new_calc)
+                let function = CalcNode::math_function(context, name)?;
+                CalcNode::parse_time(
+                    context,
+                    input,
+                    clamping_mode,
+                    function,
+                    PercentageContext::not_allowed(),
+                )
+                .map(Box::new)
+                .map(Self::new_calc)
             },
-            ref t => return Err(location.new_unexpected_token_error(t.clone())),
+            _ => Err(ParseError::unexpected_token()),
         }
     }
 
     /// Parses a non-negative time value.
-    pub fn parse_non_negative<'i, 't>(
+    pub fn parse_non_negative(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+        input: &mut Parser,
+    ) -> Result<Self, ParseError> {
         Self::parse_with_clamping_mode(context, input, AllowedNumericType::NonNegative)
     }
 }
@@ -291,10 +307,7 @@ impl ToComputedValue for Time {
 }
 
 impl Parse for Time {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Self::parse_with_clamping_mode(context, input, AllowedNumericType::All)
     }
 }

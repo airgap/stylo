@@ -15,7 +15,9 @@ use crate::properties::ComputedValues;
 use crate::queries::values::PrefersColorScheme;
 use crate::servo::media_features::PointerCapabilities;
 use crate::values::computed::font::GenericFontFamily;
-use crate::values::computed::{CSSPixelLength, Length, LineHeight, NonNegativeLength};
+use crate::values::computed::{
+    CSSPixelLength, Length, LineHeight, LinkParameters, NonNegativeLength,
+};
 use crate::values::specified::color::{ColorSchemeFlags, ForcedColors, SystemColor};
 use crate::values::specified::font::{
     QueryFontMetricsFlags, FONT_MEDIUM_CAP_PX, FONT_MEDIUM_CH_PX, FONT_MEDIUM_EX_PX,
@@ -109,7 +111,7 @@ impl Device {
             used_dynamic_viewport_size: AtomicBool::new(false),
             environment: CssEnvironment,
             default_values,
-            body_text_color: AtomicU32::new(AbsoluteColor::BLACK.to_nscolor()),
+            body_text_color: RwLock::new(AbsoluteColor::BLACK),
             extra: ExtraDeviceData {
                 media_type,
                 viewport_size,
@@ -260,6 +262,15 @@ impl Device {
             .query_font_metrics(vertical, font, base_size, flags)
     }
 
+    /// Set the media type on this [`Device`].
+    ///
+    /// Note that this does not update any associated `Stylist`. For this you must call
+    /// `Stylist::media_features_change_changed_style` and
+    /// `Stylist::force_stylesheet_origins_dirty`.
+    pub fn set_media_type(&mut self, media_type: MediaType) {
+        self.extra.media_type = media_type;
+    }
+
     /// Return the media type of the current device.
     pub fn media_type(&self) -> MediaType {
         self.extra.media_type.clone()
@@ -322,20 +333,20 @@ impl Device {
         self.extra.all_pointer_capabilities
     }
 
-    pub(crate) fn is_dark_color_scheme(&self, color_scheme: ColorSchemeFlags) -> bool {
-        // Resolve the used color scheme (CSS Color Adjust). When the element's `color-scheme`
-        // supports exactly one of light/dark, that one is used; when it supports both (or is
-        // `normal`), fall back to the user/UA preference (`prefers-color-scheme`). Previously this
-        // was a `false` stub, so `light-dark()` and dark system colors always resolved light.
-        let supports_light = color_scheme.contains(ColorSchemeFlags::LIGHT);
-        let supports_dark = color_scheme.contains(ColorSchemeFlags::DARK);
-        if supports_dark && !supports_light {
-            true
-        } else if supports_light && !supports_dark {
-            false
-        } else {
-            self.extra.prefers_color_scheme == PrefersColorScheme::Dark
+    pub(crate) fn is_dark_color_scheme(&self, color_scheme_flags: ColorSchemeFlags) -> bool {
+        // Inspired by
+        // https://searchfox.org/firefox-main/rev/0a7f146ccac85b8f413264042dcd764028d419ec/widget/nsXPLookAndFeel.cpp#1296
+        let supports_dark_mode = color_scheme_flags.contains(ColorSchemeFlags::DARK);
+        let supports_light_mode = color_scheme_flags.contains(ColorSchemeFlags::LIGHT);
+
+        // If only one is supported, then use dark mode if it was the supported one.
+        if supports_dark_mode != supports_light_mode {
+            return supports_dark_mode;
         }
+
+        // If either both or none are supported, then use the preferred color scheme
+        // to determine whether the user wants dark mode.
+        return self.color_scheme() == PrefersColorScheme::Dark;
     }
 
     pub(crate) fn system_color(
@@ -452,6 +463,13 @@ impl Device {
         }
     }
 
+    /// Returns the current effective text zoom.
+    #[inline]
+    pub(super) fn text_zoom(&self) -> f32 {
+        // (Servo doesn't do text-zoom)
+        1.
+    }
+
     /// Returns safe area insets
     pub fn safe_area_insets(&self) -> SideOffsets2D<f32, CSSPixel> {
         SideOffsets2D::zero()
@@ -478,5 +496,12 @@ impl Device {
     #[inline]
     pub fn chrome_rules_enabled_for_document(&self) -> bool {
         false
+    }
+
+    /// Returns the link-parameters that have been set for this document.
+    /// <https://drafts.csswg.org/css-link-params-1/>
+    #[inline]
+    pub fn link_parameters(&self) -> Option<&LinkParameters> {
+        None
     }
 }

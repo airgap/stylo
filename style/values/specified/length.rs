@@ -13,7 +13,7 @@ use crate::font_metrics::{FontMetrics, FontMetricsOrientation};
 #[cfg(feature = "gecko")]
 use crate::gecko_bindings::structs::GeckoFontMetrics;
 use crate::parser::{Parse, ParserContext};
-use crate::typed_om::{NumericValue, ToTyped, TypedValue, UnitValue};
+use crate::typed_om::{NumericType, NumericValue, ToTyped, TypedValue, UnitValue};
 use crate::values::computed::{self, CSSPixelLength, Context, FontSize};
 use crate::values::generics::length as generics;
 use crate::values::generics::length::{
@@ -22,7 +22,7 @@ use crate::values::generics::length::{
 };
 use crate::values::generics::NonNegative;
 use crate::values::specified::calc::{
-    AllowAnchorPositioningFunctions, CalcLengthPercentage, CalcNode,
+    AllowAnchorPositioningFunctions, CalcLengthPercentage, CalcNode, PercentageContext,
 };
 use crate::values::specified::font::QueryFontMetricsFlags;
 use crate::values::specified::percentage::NoCalcPercentage;
@@ -125,6 +125,79 @@ pub enum LengthUnit {
 }
 
 impl LengthUnit {
+    /// Returns the length unit for the given string.
+    #[inline]
+    pub fn from_str(unit: &str) -> Result<Self, ()> {
+        Self::from_str_with_flags(ParsingMode::DEFAULT, /* in_page_rule = */ false, unit)
+    }
+
+    /// Returns the length unit for the given flags and string.
+    #[inline]
+    pub fn from_str_with_flags(
+        parsing_mode: ParsingMode,
+        in_page_rule: bool,
+        unit: &str,
+    ) -> Result<Self, ()> {
+        let allows_computational_dependence = parsing_mode.allows_computational_dependence();
+
+        Ok(match_ignore_ascii_case! { unit,
+            "px" => Self::Px,
+            "in" => Self::In,
+            "cm" => Self::Cm,
+            "mm" => Self::Mm,
+            "q" => Self::Q,
+            "pt" => Self::Pt,
+            "pc" => Self::Pc,
+            // font-relative
+            "em" if allows_computational_dependence => Self::Em,
+            "ex" if allows_computational_dependence => Self::Ex,
+            "rex" if allows_computational_dependence => Self::Rex,
+            "ch" if allows_computational_dependence => Self::Ch,
+            "rch" if allows_computational_dependence => Self::Rch,
+            "cap" if allows_computational_dependence => Self::Cap,
+            "rcap" if allows_computational_dependence => Self::Rcap,
+            "ic" if allows_computational_dependence => Self::Ic,
+            "ric" if allows_computational_dependence => Self::Ric,
+            "rem" if allows_computational_dependence => Self::Rem,
+            "lh" if allows_computational_dependence => Self::Lh,
+            "rlh" if allows_computational_dependence => Self::Rlh,
+            // viewport percentages
+            "vw" if !in_page_rule => Self::Vw,
+            "svw" if !in_page_rule => Self::Svw,
+            "lvw" if !in_page_rule => Self::Lvw,
+            "dvw" if !in_page_rule => Self::Dvw,
+            "vh" if !in_page_rule => Self::Vh,
+            "svh" if !in_page_rule => Self::Svh,
+            "lvh" if !in_page_rule => Self::Lvh,
+            "dvh" if !in_page_rule => Self::Dvh,
+            "vmin" if !in_page_rule => Self::Vmin,
+            "svmin" if !in_page_rule => Self::Svmin,
+            "lvmin" if !in_page_rule => Self::Lvmin,
+            "dvmin" if !in_page_rule => Self::Dvmin,
+            "vmax" if !in_page_rule => Self::Vmax,
+            "svmax" if !in_page_rule => Self::Svmax,
+            "lvmax" if !in_page_rule => Self::Lvmax,
+            "dvmax" if !in_page_rule => Self::Dvmax,
+            "vb" if !in_page_rule => Self::Vb,
+            "svb" if !in_page_rule => Self::Svb,
+            "lvb" if !in_page_rule => Self::Lvb,
+            "dvb" if !in_page_rule => Self::Dvb,
+            "vi" if !in_page_rule => Self::Vi,
+            "svi" if !in_page_rule => Self::Svi,
+            "lvi" if !in_page_rule => Self::Lvi,
+            "dvi" if !in_page_rule => Self::Dvi,
+            // Container query lengths. Inherit the limitation from viewport units since
+            // we may fall back to them.
+            "cqw" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqw,
+            "cqh" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqh,
+            "cqi" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqi,
+            "cqb" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqb,
+            "cqmin" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqmin,
+            "cqmax" if !in_page_rule && cfg!(feature = "gecko") => Self::Cqmax,
+            _ => return Err(()),
+        })
+    }
+
     /// Returns this unit as a string.
     #[inline]
     pub fn as_str(self) -> &'static str {
@@ -496,64 +569,7 @@ impl NoCalcLength {
         value: CSSFloat,
         unit: &str,
     ) -> Result<Self, ()> {
-        let allows_computational_dependence = parsing_mode.allows_computational_dependence();
-
-        let length_unit = match_ignore_ascii_case! { unit,
-            "px" => LengthUnit::Px,
-            "in" => LengthUnit::In,
-            "cm" => LengthUnit::Cm,
-            "mm" => LengthUnit::Mm,
-            "q" => LengthUnit::Q,
-            "pt" => LengthUnit::Pt,
-            "pc" => LengthUnit::Pc,
-            // font-relative
-            "em" if allows_computational_dependence => LengthUnit::Em,
-            "ex" if allows_computational_dependence => LengthUnit::Ex,
-            "rex" if allows_computational_dependence => LengthUnit::Rex,
-            "ch" if allows_computational_dependence => LengthUnit::Ch,
-            "rch" if allows_computational_dependence => LengthUnit::Rch,
-            "cap" if allows_computational_dependence => LengthUnit::Cap,
-            "rcap" if allows_computational_dependence => LengthUnit::Rcap,
-            "ic" if allows_computational_dependence => LengthUnit::Ic,
-            "ric" if allows_computational_dependence => LengthUnit::Ric,
-            "rem" if allows_computational_dependence => LengthUnit::Rem,
-            "lh" if allows_computational_dependence => LengthUnit::Lh,
-            "rlh" if allows_computational_dependence => LengthUnit::Rlh,
-            // viewport percentages
-            "vw" if !in_page_rule => LengthUnit::Vw,
-            "svw" if !in_page_rule => LengthUnit::Svw,
-            "lvw" if !in_page_rule => LengthUnit::Lvw,
-            "dvw" if !in_page_rule => LengthUnit::Dvw,
-            "vh" if !in_page_rule => LengthUnit::Vh,
-            "svh" if !in_page_rule => LengthUnit::Svh,
-            "lvh" if !in_page_rule => LengthUnit::Lvh,
-            "dvh" if !in_page_rule => LengthUnit::Dvh,
-            "vmin" if !in_page_rule => LengthUnit::Vmin,
-            "svmin" if !in_page_rule => LengthUnit::Svmin,
-            "lvmin" if !in_page_rule => LengthUnit::Lvmin,
-            "dvmin" if !in_page_rule => LengthUnit::Dvmin,
-            "vmax" if !in_page_rule => LengthUnit::Vmax,
-            "svmax" if !in_page_rule => LengthUnit::Svmax,
-            "lvmax" if !in_page_rule => LengthUnit::Lvmax,
-            "dvmax" if !in_page_rule => LengthUnit::Dvmax,
-            "vb" if !in_page_rule => LengthUnit::Vb,
-            "svb" if !in_page_rule => LengthUnit::Svb,
-            "lvb" if !in_page_rule => LengthUnit::Lvb,
-            "dvb" if !in_page_rule => LengthUnit::Dvb,
-            "vi" if !in_page_rule => LengthUnit::Vi,
-            "svi" if !in_page_rule => LengthUnit::Svi,
-            "lvi" if !in_page_rule => LengthUnit::Lvi,
-            "dvi" if !in_page_rule => LengthUnit::Dvi,
-            // Container query lengths. Inherit the limitation from viewport units since
-            // we may fall back to them.
-            "cqw" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqw,
-            "cqh" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqh,
-            "cqi" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqi,
-            "cqb" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqb,
-            "cqmin" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqmin,
-            "cqmax" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqmax,
-            _ => return Err(()),
-        };
+        let length_unit = LengthUnit::from_str_with_flags(parsing_mode, in_page_rule, unit)?;
         Ok(Self::new(length_unit, value))
     }
 
@@ -744,7 +760,7 @@ impl NoCalcLength {
 
         context
             .builder
-            .add_flags(ComputedValueFlags::USES_FONT_RELATIVE_UNITS);
+            .add_flags(ComputedValueFlags::USES_FONT_OR_WM_RELATIVE_UNITS);
 
         let reference_font_size = base_size.resolve(context);
         let length = self.value;
@@ -764,7 +780,7 @@ impl NoCalcLength {
                     context
                         .device()
                         .calc_line_height(
-                            &context.default_style().get_font(),
+                            context.default_style().get_font(),
                             context.style().writing_mode,
                             None,
                         )
@@ -860,7 +876,7 @@ impl NoCalcLength {
                     context
                         .device()
                         .calc_line_height(
-                            &context.default_style().get_font(),
+                            context.default_style().get_font(),
                             context.style().writing_mode,
                             None,
                         )
@@ -915,6 +931,9 @@ impl NoCalcLength {
             ViewportUnit::Vmin => cmp::min(size.width, size.height),
             ViewportUnit::Vmax => cmp::max(size.width, size.height),
             ViewportUnit::Vi | ViewportUnit::Vb => {
+                context
+                    .builder
+                    .add_flags(ComputedValueFlags::USES_FONT_OR_WM_RELATIVE_UNITS);
                 context
                     .rule_cache_conditions
                     .borrow_mut()
@@ -1042,9 +1061,11 @@ impl ToCss for NoCalcLength {
 
 impl ToTyped for NoCalcLength {
     fn to_typed(&self, dest: &mut ThinVec<TypedValue>) -> Result<(), ()> {
+        let numeric_type = NumericType::length();
         let value = self.unitless_value();
         let unit = CssString::from(self.unit());
         dest.push(TypedValue::Numeric(NumericValue::Unit(UnitValue {
+            numeric_type,
             value,
             unit,
         })));
@@ -1136,13 +1157,12 @@ impl Length {
     }
 
     #[inline]
-    fn parse_internal<'i, 't>(
+    fn parse_internal(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         num_context: AllowedNumericType,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
-        let location = input.current_source_location();
+    ) -> Result<Self, ParseError> {
         let token = input.next()?;
         match *token {
             Token::Dimension {
@@ -1150,42 +1170,50 @@ impl Length {
             } if num_context.is_ok(context.parsing_mode, value) => {
                 NoCalcLength::parse_dimension_with_context(context, value, unit)
                     .map(Self::new)
-                    .map_err(|()| location.new_unexpected_token_error(token.clone()))
+                    .map_err(|()| ParseError::unexpected_token())
             },
             Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                if value != 0.
-                    && !context.parsing_mode.allows_unitless_lengths()
-                    && !allow_quirks.allowed(context.quirks_mode)
-                {
-                    return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+                let allowed = context.parsing_mode.allows_unitless_lengths()
+                    || allow_quirks.allowed(context.quirks_mode)
+                    || (value == 0. && context.parsing_mode.allows_unitless_zero_lengths());
+
+                if !allowed {
+                    return Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError));
                 }
+
                 Ok(Self::new(NoCalcLength::from_px(value)))
             },
             Token::Function(ref name) => {
-                let function = CalcNode::math_function(context, name, location)?;
-                let calc = CalcNode::parse_length(context, input, num_context, function)?;
+                let function = CalcNode::math_function(context, name)?;
+                let calc = CalcNode::parse_length(
+                    context,
+                    input,
+                    num_context,
+                    function,
+                    PercentageContext::not_allowed(),
+                )?;
                 Ok(Self::new_calc(Box::new(calc)))
             },
-            ref token => return Err(location.new_unexpected_token_error(token.clone())),
+            _ => Err(ParseError::unexpected_token()),
         }
     }
 
     /// Parse a non-negative length
     #[inline]
-    pub fn parse_non_negative<'i, 't>(
+    pub fn parse_non_negative(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+        input: &mut Parser,
+    ) -> Result<Self, ParseError> {
         Self::parse_non_negative_quirky(context, input, AllowQuirks::No)
     }
 
     /// Parse a non-negative length, allowing quirks.
     #[inline]
-    pub fn parse_non_negative_quirky<'i, 't>(
+    pub fn parse_non_negative_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1227,10 +1255,7 @@ impl Length {
 }
 
 impl Parse for Length {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Self::parse_quirky(context, input, AllowQuirks::No)
     }
 }
@@ -1280,11 +1305,11 @@ impl Zero for Length {
 
 impl Length {
     /// Parses a length, with quirks.
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(context, input, AllowedNumericType::All, allow_quirks)
     }
 }
@@ -1294,10 +1319,7 @@ pub type NonNegativeLength = NonNegative<Length>;
 
 impl Parse for NonNegativeLength {
     #[inline]
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Ok(NonNegative(Length::parse_non_negative(context, input)?))
     }
 }
@@ -1325,11 +1347,11 @@ impl NonNegativeLength {
 
     /// Parses a non-negative length, optionally with quirks.
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Ok(NonNegative(Length::parse_non_negative_quirky(
             context,
             input,
@@ -1377,10 +1399,7 @@ impl From<computed::Percentage> for LengthPercentage {
 
 impl Parse for LengthPercentage {
     #[inline]
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Self::parse_quirky(context, input, AllowQuirks::No)
     }
 }
@@ -1398,42 +1417,42 @@ impl LengthPercentage {
         LengthPercentage::Percentage(NoCalcPercentage::hundred())
     }
 
-    fn parse_internal<'i, 't>(
+    fn parse_internal(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         num_context: AllowedNumericType,
         allow_quirks: AllowQuirks,
         allow_anchor: AllowAnchorPositioningFunctions,
-    ) -> Result<Self, ParseError<'i>> {
-        let location = input.current_source_location();
+    ) -> Result<Self, ParseError> {
         let token = input.next()?;
         match *token {
             Token::Dimension {
                 value, ref unit, ..
             } if num_context.is_ok(context.parsing_mode, value) => {
-                return NoCalcLength::parse_dimension_with_context(context, value, unit)
+                NoCalcLength::parse_dimension_with_context(context, value, unit)
                     .map(LengthPercentage::Length)
-                    .map_err(|()| location.new_unexpected_token_error(token.clone()));
+                    .map_err(|()| ParseError::unexpected_token())
             },
             Token::Percentage { unit_value, .. }
                 if num_context.is_ok(context.parsing_mode, unit_value) =>
             {
-                return Ok(LengthPercentage::Percentage(NoCalcPercentage::new(
+                Ok(LengthPercentage::Percentage(NoCalcPercentage::new(
                     unit_value,
-                )));
+                )))
             },
             Token::Number { value, .. } if num_context.is_ok(context.parsing_mode, value) => {
-                if value != 0.
-                    && !context.parsing_mode.allows_unitless_lengths()
-                    && !allow_quirks.allowed(context.quirks_mode)
-                {
-                    return Err(location.new_unexpected_token_error(token.clone()));
-                } else {
-                    return Ok(LengthPercentage::Length(NoCalcLength::from_px(value)));
+                let allowed = context.parsing_mode.allows_unitless_lengths()
+                    || allow_quirks.allowed(context.quirks_mode)
+                    || (value == 0. && context.parsing_mode.allows_unitless_zero_lengths());
+
+                if !allowed {
+                    return Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError));
                 }
+
+                Ok(LengthPercentage::Length(NoCalcLength::from_px(value)))
             },
             Token::Function(ref name) => {
-                let function = CalcNode::math_function(context, name, location)?;
+                let function = CalcNode::math_function(context, name)?;
                 let calc = CalcNode::parse_length_or_percentage(
                     context,
                     input,
@@ -1443,18 +1462,18 @@ impl LengthPercentage {
                 )?;
                 Ok(LengthPercentage::Calc(Box::new(calc)))
             },
-            _ => return Err(location.new_unexpected_token_error(token.clone())),
+            _ => Err(ParseError::unexpected_token()),
         }
     }
 
     /// Parses allowing the unitless length quirk.
     /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1467,11 +1486,11 @@ impl LengthPercentage {
     /// Parses allowing the unitless length quirk, as well as allowing
     /// anchor-positioning related function, `anchor-size()`.
     #[inline]
-    fn parse_quirky_with_anchor_size_function<'i, 't>(
+    fn parse_quirky_with_anchor_size_function(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1484,11 +1503,11 @@ impl LengthPercentage {
     /// Parses allowing the unitless length quirk, as well as allowing
     /// anchor-positioning related functions, `anchor()` and `anchor-size()`.
     #[inline]
-    pub fn parse_quirky_with_anchor_functions<'i, 't>(
+    pub fn parse_quirky_with_anchor_functions(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1500,11 +1519,11 @@ impl LengthPercentage {
 
     /// Parses non-negative length, allowing the unitless length quirk,
     /// as well as allowing `anchor-size()`.
-    pub fn parse_non_negative_with_anchor_size<'i, 't>(
+    pub fn parse_non_negative_with_anchor_size(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1519,20 +1538,20 @@ impl LengthPercentage {
     /// FIXME(emilio): This should be not public and we should use
     /// NonNegativeLengthPercentage instead.
     #[inline]
-    pub fn parse_non_negative<'i, 't>(
+    pub fn parse_non_negative(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+        input: &mut Parser,
+    ) -> Result<Self, ParseError> {
         Self::parse_non_negative_quirky(context, input, AllowQuirks::No)
     }
 
     /// Parse a non-negative length, with quirks.
     #[inline]
-    pub fn parse_non_negative_quirky<'i, 't>(
+    pub fn parse_non_negative_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_internal(
             context,
             input,
@@ -1542,18 +1561,21 @@ impl LengthPercentage {
         )
     }
 
-    /// Computes this specified value without style context. This fails for calc and non-px units.
+    /// Computes this specified value without style context. This succeeds for
+    /// absolute lengths, percentages, and calc() expressions combining only
+    /// those; it fails (returns None) for anything that needs a context to
+    /// resolve, e.g. font- or viewport-relative units.
     pub fn compute_without_context(&self) -> Option<computed::LengthPercentage> {
         use crate::values::normalize;
         match self {
-            Self::Length(ref length) => length
+            Self::Length(length) => length
                 .to_computed_pixel_length_without_context()
                 .map(|v| computed::LengthPercentage::new_length(computed::Length::new(v)))
                 .ok(),
-            Self::Percentage(ref pc) => Some(computed::LengthPercentage::new_percent(
+            Self::Percentage(pc) => Some(computed::LengthPercentage::new_percent(
                 computed::Percentage(normalize(pc.get())),
             )),
-            _ => None,
+            Self::Calc(calc) => calc.compute_without_context(),
         }
     }
 }
@@ -1610,11 +1632,11 @@ impl LengthPercentageOrAuto {
     /// Parses a length or a percentage, allowing the unitless length quirk.
     /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_with(context, input, |context, input| {
             LengthPercentage::parse_quirky(context, input, allow_quirks)
         })
@@ -1637,11 +1659,11 @@ impl NonNegativeLengthPercentageOrAuto {
     /// Parses a non-negative length-percentage, allowing the unitless length
     /// quirk.
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_with(context, input, |context, input| {
             NonNegativeLengthPercentage::parse_quirky(context, input, allow_quirks)
         })
@@ -1664,10 +1686,7 @@ impl From<NoCalcLength> for NonNegativeLengthPercentage {
 
 impl Parse for NonNegativeLengthPercentage {
     #[inline]
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Self::parse_quirky(context, input, AllowQuirks::No)
     }
 }
@@ -1682,22 +1701,22 @@ impl NonNegativeLengthPercentage {
     /// Parses a length or a percentage, allowing the unitless length quirk.
     /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         LengthPercentage::parse_non_negative_quirky(context, input, allow_quirks).map(NonNegative)
     }
 
     /// Parses a length or a percentage, allowing the unitless length quirk,
     /// as well as allowing `anchor-size()`.
     #[inline]
-    pub fn parse_non_negative_with_anchor_size<'i, 't>(
+    pub fn parse_non_negative_with_anchor_size(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         LengthPercentage::parse_non_negative_with_anchor_size(context, input, allow_quirks)
             .map(NonNegative)
     }
@@ -1714,11 +1733,11 @@ impl LengthOrAuto {
     /// Parses a length, allowing the unitless length quirk.
     /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         Self::parse_with(context, input, |context, input| {
             Length::parse_quirky(context, input, allow_quirks)
         })
@@ -1735,10 +1754,7 @@ pub type LengthOrNumber = GenericLengthOrNumber<Length, Number>;
 pub type Size = GenericSize<NonNegativeLengthPercentage>;
 
 impl Parse for Size {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Size::parse_quirky(context, input, AllowQuirks::No)
     }
 }
@@ -1765,23 +1781,23 @@ macro_rules! parse_size_non_length {
 }
 
 fn is_webkit_fill_available_enabled_in_width_and_height() -> bool {
-    static_prefs::pref!("layout.css.webkit-fill-available.enabled")
+    crate::pref!("layout.css.webkit-fill-available.enabled")
 }
 
 fn is_webkit_fill_available_enabled_in_all_size_properties() -> bool {
     // For convenience at the callsites, we check both prefs here,
     // since both must be 'true' in order for the keyword to be
     // enabled in all size properties.
-    static_prefs::pref!("layout.css.webkit-fill-available.enabled")
-        && static_prefs::pref!("layout.css.webkit-fill-available.all-size-properties.enabled")
+    crate::pref!("layout.css.webkit-fill-available.enabled")
+        && crate::pref!("layout.css.webkit-fill-available.all-size-properties.enabled")
 }
 
 fn is_stretch_enabled() -> bool {
-    static_prefs::pref!("layout.css.stretch-size-keyword.enabled")
+    crate::pref!("layout.css.stretch-size-keyword.enabled")
 }
 
 fn is_fit_content_function_enabled() -> bool {
-    static_prefs::pref!("layout.css.fit-content-function.enabled")
+    crate::pref!("layout.css.fit-content-function.enabled")
 }
 
 macro_rules! parse_fit_content_function {
@@ -1807,11 +1823,11 @@ enum ParseAnchorFunctions {
 
 impl Size {
     /// Parses, with quirks.
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         let allow_webkit_fill_available = is_webkit_fill_available_enabled_in_all_size_properties();
         Self::parse_quirky_internal(
             context,
@@ -1823,10 +1839,10 @@ impl Size {
     }
 
     /// Parses for flex-basis: <width>
-    pub fn parse_size_for_flex_basis_width<'i, 't>(
+    pub fn parse_size_for_flex_basis_width(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+        input: &mut Parser,
+    ) -> Result<Self, ParseError> {
         Self::parse_quirky_internal(
             context,
             input,
@@ -1840,19 +1856,19 @@ impl Size {
     /// whether the '-webkit-fill-available' keyword is allowed.
     /// TODO(dholbert) Fold this function into callsites in bug 1989073 when
     /// removing 'layout.css.webkit-fill-available.all-size-properties.enabled'.
-    fn parse_quirky_internal<'i, 't>(
+    fn parse_quirky_internal(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
         allow_webkit_fill_available: bool,
         allow_anchor_functions: ParseAnchorFunctions,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         parse_size_non_length!(Size, input, allow_webkit_fill_available,
                                "auto" => Auto);
         parse_fit_content_function!(Size, input, context, allow_quirks);
 
         let allow_anchor = allow_anchor_functions == ParseAnchorFunctions::Yes
-            && static_prefs::pref!("layout.css.anchor-positioning.enabled");
+            && crate::pref!("layout.css.anchor-positioning.enabled", gecko = true);
         match input
             .try_parse(|i| NonNegativeLengthPercentage::parse_quirky(context, i, allow_quirks))
         {
@@ -1879,11 +1895,11 @@ impl Size {
     /// there's an additional pref check):
     /// TODO(dholbert) Remove this custom parse func in bug 1989073, along with
     /// 'layout.css.webkit-fill-available.all-size-properties.enabled'.
-    pub fn parse_size_for_width_or_height_quirky<'i, 't>(
+    pub fn parse_size_for_width_or_height_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         let allow_webkit_fill_available = is_webkit_fill_available_enabled_in_width_and_height();
         Self::parse_quirky_internal(
             context,
@@ -1899,10 +1915,10 @@ impl Size {
     /// there's an additional pref check):
     /// TODO(dholbert) Remove this custom parse func in bug 1989073, along with
     /// 'layout.css.webkit-fill-available.all-size-properties.enabled'.
-    pub fn parse_size_for_width_or_height<'i, 't>(
+    pub fn parse_size_for_width_or_height(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+        input: &mut Parser,
+    ) -> Result<Self, ParseError> {
         let allow_webkit_fill_available = is_webkit_fill_available_enabled_in_width_and_height();
         Self::parse_quirky_internal(
             context,
@@ -1924,21 +1940,18 @@ impl Size {
 pub type MaxSize = GenericMaxSize<NonNegativeLengthPercentage>;
 
 impl Parse for MaxSize {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         MaxSize::parse_quirky(context, input, AllowQuirks::No)
     }
 }
 
 impl MaxSize {
     /// Parses, with quirks.
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         let allow_webkit_fill_available = is_webkit_fill_available_enabled_in_all_size_properties();
         parse_size_non_length!(MaxSize, input, allow_webkit_fill_available,
                                "none" => None);
@@ -1948,7 +1961,7 @@ impl MaxSize {
             .try_parse(|i| NonNegativeLengthPercentage::parse_quirky(context, i, allow_quirks))
         {
             Ok(length) => return Ok(GenericMaxSize::LengthPercentage(length)),
-            Err(e) if !static_prefs::pref!("layout.css.anchor-positioning.enabled") => {
+            Err(e) if !crate::pref!("layout.css.anchor-positioning.enabled", gecko = true) => {
                 return Err(e.into())
             },
             Err(_) => (),
@@ -1978,18 +1991,18 @@ impl Margin {
     /// Parses a margin type, allowing the unitless length quirk.
     /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
     #[inline]
-    pub fn parse_quirky<'i, 't>(
+    pub fn parse_quirky(
         context: &ParserContext,
-        input: &mut Parser<'i, 't>,
+        input: &mut Parser,
         allow_quirks: AllowQuirks,
-    ) -> Result<Self, ParseError<'i>> {
+    ) -> Result<Self, ParseError> {
         if let Ok(l) = input.try_parse(|i| LengthPercentage::parse_quirky(context, i, allow_quirks))
         {
             return Ok(Self::LengthPercentage(l));
         }
         match input.try_parse(|i| i.expect_ident_matching("auto")) {
             Ok(_) => return Ok(Self::Auto),
-            Err(e) if !static_prefs::pref!("layout.css.anchor-positioning.enabled") => {
+            Err(e) if !crate::pref!("layout.css.anchor-positioning.enabled", gecko = true) => {
                 return Err(e.into())
             },
             Err(_) => (),
@@ -2005,10 +2018,7 @@ impl Margin {
 }
 
 impl Parse for Margin {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
+    fn parse(context: &ParserContext, input: &mut Parser) -> Result<Self, ParseError> {
         Self::parse_quirky(context, input, AllowQuirks::No)
     }
 }
