@@ -187,6 +187,34 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             .set_adjusted_display(new_display, false);
     }
 
+    /// Servo has no layout for the legacy `display: -webkit-box`, which pages mostly use for
+    /// `-webkit-line-clamp`. A vertical box becomes a block container, as in Blink (whose
+    /// clamped boxes are blocks, and which renders unclamped vertical ones the same way);
+    /// layout clamps its lines, seeing `-webkit-box` as the original display. A horizontal box
+    /// is laid out as the row flexbox it emulates.
+    #[cfg(feature = "servo")]
+    fn adjust_for_webkit_box(&mut self) {
+        use crate::properties::longhands::_webkit_box_orient::computed_value::T as BoxOrient;
+        use crate::values::specified::box_::{DisplayInside, DisplayOutside};
+        let box_style = self.style.get_box();
+        let display = box_style.clone_display();
+        if display.inside() != DisplayInside::WebkitBox {
+            return;
+        }
+        let vertical = box_style.clone__webkit_box_orient() == BoxOrient::Vertical;
+        // Servo has no `flow-root`; clamped boxes are `overflow: hidden` in practice, which
+        // makes them a formatting context root anyway.
+        let new_display = match (display.outside() == DisplayOutside::Block, vertical) {
+            (true, true) => Display::Block,
+            (false, true) => Display::InlineBlock,
+            (true, false) => Display::Flex,
+            (false, false) => Display::InlineFlex,
+        };
+        self.style
+            .mutate_box()
+            .set_adjusted_display(new_display, false);
+    }
+
     /// CSS 2.1 section 9.7:
     ///
     ///    If 'position' has the value 'absolute' or 'fixed', [...] the computed
@@ -209,6 +237,32 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         }
 
         element.is_some_and(|e| e.skip_item_display_fixup())
+    }
+
+    /// Browsers lay `<br>` out as a line break whatever its `display` other than `none`
+    /// (Gecko special-cases it in frame construction). As a block its "\A" `::before` became a
+    /// blank line, and a flex `<br>` blockified that `::before` into one.
+    #[cfg(feature = "servo")]
+    fn adjust_for_br<E>(&mut self, element: Option<E>)
+    where
+        E: TElement,
+    {
+        if self.style.pseudo.is_some() {
+            return;
+        }
+        let Some(element) = element else {
+            return;
+        };
+        if !element.is_html_element() || element.local_name() != &**local_name!("br") {
+            return;
+        }
+        let display = self.style.get_box().clone_display();
+        if display.is_none() || display == Display::Inline {
+            return;
+        }
+        self.style
+            .mutate_box()
+            .set_adjusted_display(Display::Inline, false);
     }
 
     /// Apply the blockification rules based on the table in CSS 2.2 section 9.7.
@@ -1061,6 +1115,10 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             self.adjust_for_text_control_editing_root();
         }
         self.adjust_for_top_layer();
+        #[cfg(feature = "servo")]
+        self.adjust_for_br(element);
+        #[cfg(feature = "servo")]
+        self.adjust_for_webkit_box();
         self.blockify_if_necessary(layout_parent_style, element);
         #[cfg(feature = "gecko")]
         self.adjust_for_webkit_line_clamp();

@@ -100,9 +100,18 @@ affects = "layout"
 type = "LineClamp"
 initial = "computed::LineClamp::none()"
 struct = "box"
-engine = "gecko"
 spec = "https://drafts.csswg.org/css-overflow-3/#line-clamp"
 affects = "layout"
+
+# Servo's `-webkit-box-orient`: Gecko's is an alias of `-moz-box-orient` in its XUL struct,
+# which Servo doesn't have. Only `display: -webkit-box` reads it, see StyleAdjuster.
+[-webkit-box-orient]
+struct = "box"
+engine = "servo"
+spec = "Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/box-orient)"
+animation_type = "discrete"
+affects = "layout"
+keyword = { values = ["horizontal", "vertical"] }
 
 [-x-lang]
 type = "XLang"
@@ -2731,7 +2740,6 @@ affects = "paint"
 type = "TextOverflow"
 initial = "computed::TextOverflow::get_initial_value()"
 struct = "text"
-servo_pref = "layout.unimplemented"
 animation_type = "discrete"
 boxed = true
 spec = "https://drafts.csswg.org/css-ui/#propdef-text-overflow"
