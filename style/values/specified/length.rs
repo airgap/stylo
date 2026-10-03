@@ -546,12 +546,12 @@ impl NoCalcLength {
             "dvi" if !in_page_rule => LengthUnit::Dvi,
             // Container query lengths. Inherit the limitation from viewport units since
             // we may fall back to them.
-            "cqw" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqw,
-            "cqh" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqh,
-            "cqi" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqi,
-            "cqb" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqb,
-            "cqmin" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqmin,
-            "cqmax" if !in_page_rule && cfg!(feature = "gecko") => LengthUnit::Cqmax,
+            "cqw" if !in_page_rule => LengthUnit::Cqw,
+            "cqh" if !in_page_rule => LengthUnit::Cqh,
+            "cqi" if !in_page_rule => LengthUnit::Cqi,
+            "cqb" if !in_page_rule => LengthUnit::Cqb,
+            "cqmin" if !in_page_rule => LengthUnit::Cqmin,
+            "cqmax" if !in_page_rule => LengthUnit::Cqmax,
             _ => return Err(()),
         };
         Ok(Self::new(length_unit, value))
