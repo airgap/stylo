@@ -856,7 +856,7 @@ affects = "paint"
 
 [font-family]
 type = "FontFamily"
-initial = "computed::FontFamily::serif()"
+initial = "computed::FontFamily::initial()"
 struct = "font"
 animation_type = "discrete"
 spec = "https://drafts.csswg.org/css-fonts/#propdef-font-family"
@@ -3944,6 +3944,17 @@ animation_type = "discrete"
 affects = "layout"
 servo_restyle_damage = "rebuild_box"
 keyword = { values = ["none", "circle", "disc", "square"] }
+
+# Only the values whose behaviour Servo's layout implements: `normal` collapses the spacing of
+# adjacent fullwidth punctuation, `space-all` turns that off.
+[text-spacing-trim]
+struct = "inherited_text"
+engine = "servo"
+spec = "https://drafts.csswg.org/css-text-4/#text-spacing-trim-property"
+animation_type = "discrete"
+affects = "layout"
+servo_restyle_damage = "rebuild_box"
+keyword = { values = ["normal", "space-all"] }
 
 [text-wrap-mode]
 struct = "inherited_text"
