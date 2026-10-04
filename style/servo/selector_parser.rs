@@ -69,6 +69,7 @@ pub enum PseudoElement {
     SliderFill,
     SliderThumb,
     SliderTrack,
+    WebkitInnerSpinButton,
 
     // Private, Servo-specific implemented pseudos. Only matchable in UA sheet.
     ServoTextControlInnerContainer,
@@ -106,6 +107,7 @@ impl ToCss for PseudoElement {
             SliderFill => "::slider-fill",
             SliderTrack => "::slider-track",
             SliderThumb => "::slider-thumb",
+            WebkitInnerSpinButton => "::-webkit-inner-spin-button",
             ServoTextControlInnerContainer => "::-servo-text-control-inner-container",
             ServoTextControlInnerEditor => "::-servo-text-control-inner-editor",
             ServoAnonymousBox => "::-servo-anonymous-box",
@@ -265,6 +267,7 @@ impl PseudoElement {
             | PseudoElement::SliderFill
             | PseudoElement::SliderThumb
             | PseudoElement::SliderTrack
+            | PseudoElement::WebkitInnerSpinButton
             | PseudoElement::ServoTextControlInnerContainer
             | PseudoElement::ServoTextControlInnerEditor => PseudoElementCascadeType::Lazy,
             PseudoElement::ServoAnonymousBox
@@ -347,6 +350,7 @@ impl PseudoElement {
                     | Self::SliderFill
                     | Self::SliderThumb
                     | Self::SliderTrack
+                    | Self::WebkitInnerSpinButton
                     | Self::ServoTextControlInnerContainer
                     | Self::ServoTextControlInnerEditor,
             )
@@ -632,6 +636,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "focus-within" => NonTSPseudoClass::FocusWithin,
             "fullscreen" => NonTSPseudoClass::Fullscreen,
             "hover" => NonTSPseudoClass::Hover,
+            "in-range" => NonTSPseudoClass::InRange,
             "indeterminate" => NonTSPseudoClass::Indeterminate,
             "invalid" => NonTSPseudoClass::Invalid,
             "link" => NonTSPseudoClass::Link,
@@ -718,6 +723,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "slider-fill" => SliderFill,
             "slider-thumb" => SliderThumb,
             "slider-track" => SliderTrack,
+            "-webkit-inner-spin-button" => WebkitInnerSpinButton,
             "-servo-anonymous-box" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
