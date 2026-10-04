@@ -873,8 +873,8 @@ pub enum ScrollSnapStrictness {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct ScrollSnapType {
-    axis: ScrollSnapAxis,
-    strictness: ScrollSnapStrictness,
+    pub axis: ScrollSnapAxis,
+    pub strictness: ScrollSnapStrictness,
 }
 
 impl ScrollSnapType {
@@ -970,8 +970,8 @@ pub enum ScrollSnapAlignKeyword {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct ScrollSnapAlign {
-    block: ScrollSnapAlignKeyword,
-    inline: ScrollSnapAlignKeyword,
+    pub block: ScrollSnapAlignKeyword,
+    pub inline: ScrollSnapAlignKeyword,
 }
 
 impl ScrollSnapAlign {
