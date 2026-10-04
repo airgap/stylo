@@ -77,6 +77,23 @@ pub enum PseudoElement {
     WebkitProgressBar,
     WebkitProgressValue,
 
+    // Pseudo-elements that Chrome exposes for its classic scrollbars and form-control parts,
+    // which have no counterpart in Servo. They parse so that the rules using them are kept
+    // (dropping a whole rule list over one of them breaks unrelated styling), but they never
+    // match anything.
+    WebkitOuterSpinButton,
+    WebkitResizer,
+    WebkitScrollbar,
+    WebkitScrollbarButton,
+    WebkitScrollbarCorner,
+    WebkitScrollbarThumb,
+    WebkitScrollbarTrack,
+    WebkitScrollbarTrackPiece,
+    WebkitSearchCancelButton,
+    WebkitSearchDecoration,
+    WebkitSearchResultsButton,
+    WebkitSearchResultsDecoration,
+
     // Private, Servo-specific implemented pseudos. Only matchable in UA sheet.
     ServoSelectArrow,
     ServoTextControlInnerContainer,
@@ -123,6 +140,18 @@ impl ToCss for PseudoElement {
             WebkitProgressBar => "::-webkit-progress-bar",
             WebkitProgressValue => "::-webkit-progress-value",
             ServoSelectArrow => "::-servo-select-arrow",
+            WebkitOuterSpinButton => "::-webkit-outer-spin-button",
+            WebkitResizer => "::-webkit-resizer",
+            WebkitScrollbar => "::-webkit-scrollbar",
+            WebkitScrollbarButton => "::-webkit-scrollbar-button",
+            WebkitScrollbarCorner => "::-webkit-scrollbar-corner",
+            WebkitScrollbarThumb => "::-webkit-scrollbar-thumb",
+            WebkitScrollbarTrack => "::-webkit-scrollbar-track",
+            WebkitScrollbarTrackPiece => "::-webkit-scrollbar-track-piece",
+            WebkitSearchCancelButton => "::-webkit-search-cancel-button",
+            WebkitSearchDecoration => "::-webkit-search-decoration",
+            WebkitSearchResultsButton => "::-webkit-search-results-button",
+            WebkitSearchResultsDecoration => "::-webkit-search-results-decoration",
             ServoTextControlInnerContainer => "::-servo-text-control-inner-container",
             ServoTextControlInnerEditor => "::-servo-text-control-inner-editor",
             ServoAnonymousBox => "::-servo-anonymous-box",
@@ -141,6 +170,12 @@ impl ::selectors::parser::PseudoElement for PseudoElement {
 
     fn parses_as_element_backed(&self) -> bool {
         matches!(self, Self::DetailsContent)
+    }
+
+    // Chrome accepts user-action states after its scrollbar parts, as in the common
+    // `::-webkit-scrollbar-thumb:hover`.
+    fn accepts_state_pseudo_classes(&self) -> bool {
+        self.is_unknown_webkit_pseudo_element()
     }
 }
 
@@ -163,7 +198,7 @@ impl PseudoElement {
 
     /// An array of `None`, one per pseudo-element.
     pub fn pseudo_none_array<T>() -> [Option<T>; PSEUDO_COUNT] {
-        Default::default()
+        [const { None }; PSEUDO_COUNT]
     }
 
     /// Creates a pseudo-element from an eager index.
@@ -181,10 +216,25 @@ impl PseudoElement {
         self.is_before() || self.is_after()
     }
 
-    /// Whether this is an unknown ::-webkit- pseudo-element.
+    /// Whether this is a ::-webkit- pseudo-element that parses but never matches. The stylist
+    /// drops the rules that use one.
     #[inline]
     pub fn is_unknown_webkit_pseudo_element(&self) -> bool {
-        false
+        matches!(
+            *self,
+            PseudoElement::WebkitOuterSpinButton
+            | PseudoElement::WebkitResizer
+            | PseudoElement::WebkitScrollbar
+            | PseudoElement::WebkitScrollbarButton
+            | PseudoElement::WebkitScrollbarCorner
+            | PseudoElement::WebkitScrollbarThumb
+            | PseudoElement::WebkitScrollbarTrack
+            | PseudoElement::WebkitScrollbarTrackPiece
+            | PseudoElement::WebkitSearchCancelButton
+            | PseudoElement::WebkitSearchDecoration
+            | PseudoElement::WebkitSearchResultsButton
+            | PseudoElement::WebkitSearchResultsDecoration
+        )
     }
 
     /// Whether this pseudo-element is the ::marker pseudo.
@@ -291,6 +341,18 @@ impl PseudoElement {
             | PseudoElement::WebkitProgressBar
             | PseudoElement::WebkitProgressValue
             | PseudoElement::ServoSelectArrow
+            | PseudoElement::WebkitOuterSpinButton
+            | PseudoElement::WebkitResizer
+            | PseudoElement::WebkitScrollbar
+            | PseudoElement::WebkitScrollbarButton
+            | PseudoElement::WebkitScrollbarCorner
+            | PseudoElement::WebkitScrollbarThumb
+            | PseudoElement::WebkitScrollbarTrack
+            | PseudoElement::WebkitScrollbarTrackPiece
+            | PseudoElement::WebkitSearchCancelButton
+            | PseudoElement::WebkitSearchDecoration
+            | PseudoElement::WebkitSearchResultsButton
+            | PseudoElement::WebkitSearchResultsDecoration
             | PseudoElement::ServoTextControlInnerContainer
             | PseudoElement::ServoTextControlInnerEditor => PseudoElementCascadeType::Lazy,
             PseudoElement::ServoAnonymousBox
@@ -739,6 +801,21 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "details-content" => DetailsContent,
             "color-swatch" => ColorSwatch,
             "placeholder" => Placeholder,
+            // Chrome's legacy names for ::placeholder and ::file-selector-button.
+            "-webkit-input-placeholder" => Placeholder,
+            "-webkit-file-upload-button" => FileSelectorButton,
+            "-webkit-outer-spin-button" => WebkitOuterSpinButton,
+            "-webkit-resizer" => WebkitResizer,
+            "-webkit-scrollbar" => WebkitScrollbar,
+            "-webkit-scrollbar-button" => WebkitScrollbarButton,
+            "-webkit-scrollbar-corner" => WebkitScrollbarCorner,
+            "-webkit-scrollbar-thumb" => WebkitScrollbarThumb,
+            "-webkit-scrollbar-track" => WebkitScrollbarTrack,
+            "-webkit-scrollbar-track-piece" => WebkitScrollbarTrackPiece,
+            "-webkit-search-cancel-button" => WebkitSearchCancelButton,
+            "-webkit-search-decoration" => WebkitSearchDecoration,
+            "-webkit-search-results-button" => WebkitSearchResultsButton,
+            "-webkit-search-results-decoration" => WebkitSearchResultsDecoration,
             "-servo-text-control-inner-container" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
