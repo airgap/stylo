@@ -3661,6 +3661,14 @@ enabled_in = "ua"
 affects = "layout"
 keyword = { values = ["none", "top"] }
 
+[overlay]
+struct = "box"
+engine = "servo"
+spec = "https://drafts.csswg.org/css-position-4/#overlay"
+animation_type = "discrete"
+affects = "layout"
+keyword = { values = ["none", "auto"] }
+
 [scroll-behavior]
 struct = "box"
 spec = "https://drafts.csswg.org/cssom-view/#propdef-scroll-behavior"

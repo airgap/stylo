@@ -515,6 +515,31 @@ fn animate_discrete<T: Clone>(this: &T, other: &T, procedure: Procedure) -> Resu
     }
 }
 
+/// Discrete interpolation for `display` and `overlay`, whose `none` value only applies at the end
+/// of the interpolation that goes to or from it, so that an element stays rendered (or in the top
+/// layer) for the whole of a transition that hides it.
+///
+/// <https://drafts.csswg.org/css-display-4/#display-animation>
+/// <https://drafts.csswg.org/css-position-4/#overlay>
+#[cfg(feature = "servo")]
+fn animate_discrete_with_none<T: Clone + PartialEq>(
+    this: &T,
+    other: &T,
+    none: &T,
+    procedure: Procedure,
+) -> Result<T, ()> {
+    let Procedure::Interpolate { progress } = procedure else {
+        return Err(());
+    };
+    if *this == *none && *other != *none {
+        return Ok(if progress <= 0. { this.clone() } else { other.clone() });
+    }
+    if *other == *none && *this != *none {
+        return Ok(if progress >= 1. { other.clone() } else { this.clone() });
+    }
+    animate_discrete(this, other, procedure)
+}
+
 impl Animate for AnimationValue {
     fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
         Ok(unsafe {
@@ -529,10 +554,25 @@ impl Animate for AnimationValue {
             match *self {
                 <% keyfunc = lambda x: (x.animated_type(), x.animation_type == "discrete") %>
                 % for (ty, discrete), props in groupby(animated, key=keyfunc):
+                <% props = list(props) %>
                 ${" |\n".join("{}(ref this)".format(prop.camel_case) for prop in props)} => {
                     let other_repr =
                         &*(other as *const _ as *const AnimationValueVariantRepr<${ty}>);
-                    % if discrete:
+                    % if discrete and engine == "servo" and [p.name for p in props] == ["display"]:
+                    let value = animate_discrete_with_none(
+                        this,
+                        &other_repr.value,
+                        &crate::values::computed::Display::None,
+                        procedure,
+                    )?;
+                    % elif discrete and engine == "servo" and [p.name for p in props] == ["overlay"]:
+                    let value = animate_discrete_with_none(
+                        this,
+                        &other_repr.value,
+                        &crate::properties::longhands::overlay::computed_value::T::None,
+                        procedure,
+                    )?;
+                    % elif discrete:
                     let value = animate_discrete(this, &other_repr.value, procedure)?;
                     % else:
                     let value = this.animate(&other_repr.value, procedure)?;

@@ -2563,11 +2563,14 @@ impl<'a> StyleBuilder<'a> {
         self.get_box().clone_position().is_absolutely_positioned()
     }
 
-    /// Whether this style has a top-layer style.
+    /// Whether this style has a top-layer style. An element whose removal from the top layer is
+    /// deferred by a transition of `overlay` stays there until `overlay` becomes `none`.
     #[cfg(feature = "servo")]
     pub fn in_top_layer(&self) -> bool {
         matches!(self.get_box().clone__servo_top_layer(),
-                 longhands::_servo_top_layer::computed_value::T::Top)
+                 longhands::_servo_top_layer::computed_value::T::Top) ||
+            matches!(self.get_box().clone_overlay(),
+                     longhands::overlay::computed_value::T::Auto)
     }
 
     /// Whether this style has a top-layer style.
