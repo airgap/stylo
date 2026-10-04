@@ -70,8 +70,15 @@ pub enum PseudoElement {
     SliderThumb,
     SliderTrack,
     WebkitInnerSpinButton,
+    WebkitMeterBar,
+    WebkitMeterEvenLessGoodValue,
+    WebkitMeterOptimumValue,
+    WebkitMeterSuboptimumValue,
+    WebkitProgressBar,
+    WebkitProgressValue,
 
     // Private, Servo-specific implemented pseudos. Only matchable in UA sheet.
+    ServoSelectArrow,
     ServoTextControlInnerContainer,
     ServoTextControlInnerEditor,
 
@@ -108,6 +115,13 @@ impl ToCss for PseudoElement {
             SliderTrack => "::slider-track",
             SliderThumb => "::slider-thumb",
             WebkitInnerSpinButton => "::-webkit-inner-spin-button",
+            WebkitMeterBar => "::-webkit-meter-bar",
+            WebkitMeterEvenLessGoodValue => "::-webkit-meter-even-less-good-value",
+            WebkitMeterOptimumValue => "::-webkit-meter-optimum-value",
+            WebkitMeterSuboptimumValue => "::-webkit-meter-suboptimum-value",
+            WebkitProgressBar => "::-webkit-progress-bar",
+            WebkitProgressValue => "::-webkit-progress-value",
+            ServoSelectArrow => "::-servo-select-arrow",
             ServoTextControlInnerContainer => "::-servo-text-control-inner-container",
             ServoTextControlInnerEditor => "::-servo-text-control-inner-editor",
             ServoAnonymousBox => "::-servo-anonymous-box",
@@ -268,6 +282,13 @@ impl PseudoElement {
             | PseudoElement::SliderThumb
             | PseudoElement::SliderTrack
             | PseudoElement::WebkitInnerSpinButton
+            | PseudoElement::WebkitMeterBar
+            | PseudoElement::WebkitMeterEvenLessGoodValue
+            | PseudoElement::WebkitMeterOptimumValue
+            | PseudoElement::WebkitMeterSuboptimumValue
+            | PseudoElement::WebkitProgressBar
+            | PseudoElement::WebkitProgressValue
+            | PseudoElement::ServoSelectArrow
             | PseudoElement::ServoTextControlInnerContainer
             | PseudoElement::ServoTextControlInnerEditor => PseudoElementCascadeType::Lazy,
             PseudoElement::ServoAnonymousBox
@@ -351,6 +372,13 @@ impl PseudoElement {
                     | Self::SliderThumb
                     | Self::SliderTrack
                     | Self::WebkitInnerSpinButton
+                    | Self::WebkitMeterBar
+                    | Self::WebkitMeterEvenLessGoodValue
+                    | Self::WebkitMeterOptimumValue
+                    | Self::WebkitMeterSuboptimumValue
+                    | Self::WebkitProgressBar
+                    | Self::WebkitProgressValue
+                    | Self::ServoSelectArrow
                     | Self::ServoTextControlInnerContainer
                     | Self::ServoTextControlInnerEditor,
             )
@@ -724,6 +752,18 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "slider-thumb" => SliderThumb,
             "slider-track" => SliderTrack,
             "-webkit-inner-spin-button" => WebkitInnerSpinButton,
+            "-webkit-meter-bar" => WebkitMeterBar,
+            "-webkit-meter-even-less-good-value" => WebkitMeterEvenLessGoodValue,
+            "-webkit-meter-optimum-value" => WebkitMeterOptimumValue,
+            "-webkit-meter-suboptimum-value" => WebkitMeterSuboptimumValue,
+            "-webkit-progress-bar" => WebkitProgressBar,
+            "-webkit-progress-value" => WebkitProgressValue,
+            "-servo-select-arrow" => {
+                if !self.in_user_agent_stylesheet() {
+                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                }
+                ServoSelectArrow
+            },
             "-servo-anonymous-box" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
