@@ -617,7 +617,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
 
     #[inline]
     fn parse_nth_child_of(&self) -> bool {
-        false
+        true
     }
 
     #[inline]
@@ -653,7 +653,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
         let pseudo_class = match_ignore_ascii_case! { &name,
             "active" => NonTSPseudoClass::Active,
             "any-link" => NonTSPseudoClass::AnyLink,
-            "autofill" => NonTSPseudoClass::Autofill,
+            "autofill" | "-webkit-autofill" => NonTSPseudoClass::Autofill,
             "checked" => NonTSPseudoClass::Checked,
             "default" => NonTSPseudoClass::Default,
             "defined" => NonTSPseudoClass::Defined,
