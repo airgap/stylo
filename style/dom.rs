@@ -613,7 +613,13 @@ pub trait TElement:
     /// `::-first-line` or `::-first-letter`, when we know it won't affect us.
     ///
     /// TODO(emilio, bz): actually implement the logic for it.
-    fn may_generate_pseudo(&self, pseudo: &PseudoElement, _primary_style: &ComputedValues) -> bool {
+    fn may_generate_pseudo(&self, pseudo: &PseudoElement, primary_style: &ComputedValues) -> bool {
+        // <https://drafts.csswg.org/css-position-4/#backdrop>
+        #[cfg(feature = "servo")]
+        if *pseudo == PseudoElement::Backdrop {
+            return primary_style.in_top_layer();
+        }
+
         // ::before/::after are always supported for now, though we could try to
         // optimize out leaf elements.
 

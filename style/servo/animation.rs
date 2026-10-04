@@ -1718,8 +1718,6 @@ impl DocumentAnimationSet {
     }
 }
 
-/// Kick off any new transitions for this node and return all of the properties that are
-/// transitioning. This is at the end of calculating style for a single node.
 /// Whether `display` has a matching transition-property value whose transition-behavior is
 /// allow-discrete.
 fn transitions_display_discretely(style: &ComputedValues) -> bool {
@@ -1730,6 +1728,8 @@ fn transitions_display_discretely(style: &ComputedValues) -> bool {
     })
 }
 
+/// Kick off any new transitions for this node and return all of the properties that are
+/// transitioning. This is at the end of calculating style for a single node.
 pub fn start_transitions_if_applicable(
     context: &SharedStyleContext,
     old_style: &ComputedValues,

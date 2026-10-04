@@ -54,9 +54,11 @@ pub enum PseudoElement {
     // Also, make sure the UA sheet has the !important rules some of the
     // APPLIES_TO_PLACEHOLDER properties expect!
     FirstLetter,
+    // Eager so that it can animate like ::before and ::after, but only generated for elements in
+    // the top layer.
+    Backdrop,
 
     // Non-eager pseudos.
-    Backdrop,
     DetailsContent,
     Marker,
 
@@ -180,7 +182,7 @@ impl ::selectors::parser::PseudoElement for PseudoElement {
 }
 
 /// The number of eager pseudo-elements. Keep this in sync with cascade_type.
-pub const EAGER_PSEUDO_COUNT: usize = 4;
+pub const EAGER_PSEUDO_COUNT: usize = 5;
 
 impl PseudoElement {
     /// Gets the canonical index of this eagerly-cascaded pseudo-element.
@@ -323,9 +325,9 @@ impl PseudoElement {
             PseudoElement::After
             | PseudoElement::Before
             | PseudoElement::FirstLetter
-            | PseudoElement::Selection => PseudoElementCascadeType::Eager,
-            PseudoElement::Backdrop
-            | PseudoElement::ColorSwatch
+            | PseudoElement::Selection
+            | PseudoElement::Backdrop => PseudoElementCascadeType::Eager,
+            PseudoElement::ColorSwatch
             | PseudoElement::FileSelectorButton
             | PseudoElement::Marker
             | PseudoElement::Placeholder
