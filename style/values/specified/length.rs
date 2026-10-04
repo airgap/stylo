@@ -122,6 +122,10 @@ pub enum LengthUnit {
     Cqmax,
     /// HTML5 "character width", as defined in HTML5 § 14.5.4. Internal-only.
     ServoCharacterWidth,
+    /// The width of a `<textarea>` of this many columns. Internal-only.
+    ServoTextAreaColumns,
+    /// The height of a `<textarea>` of this many rows. Internal-only.
+    ServoTextAreaRows,
 }
 
 impl LengthUnit {
@@ -178,7 +182,7 @@ impl LengthUnit {
             Self::Cqb => "cqb",
             Self::Cqmin => "cqmin",
             Self::Cqmax => "cqmax",
-            Self::ServoCharacterWidth => "",
+            Self::ServoCharacterWidth | Self::ServoTextAreaColumns | Self::ServoTextAreaRows => "",
         }
     }
 
@@ -243,6 +247,15 @@ impl LengthUnit {
         )
     }
 
+    /// Whether this is one of the internal units that size text controls from their attributes.
+    #[inline]
+    pub fn is_text_control_size(self) -> bool {
+        matches!(
+            self,
+            Self::ServoCharacterWidth | Self::ServoTextAreaColumns | Self::ServoTextAreaRows
+        )
+    }
+
     /// Whether this is a container-relative unit.
     #[inline]
     pub fn is_container_relative(self) -> bool {
@@ -253,7 +266,7 @@ impl LengthUnit {
     }
 
     /// Returns the sort key for this unit. Must not be called for the internal
-    /// `ServoCharacterWidth` unit.
+    /// text control units.
     fn sort_key(self) -> crate::values::generics::calc::SortKey {
         use crate::values::generics::calc::SortKey;
         match self {
@@ -302,7 +315,9 @@ impl LengthUnit {
             Self::Cqb => SortKey::Cqb,
             Self::Cqmin => SortKey::Cqmin,
             Self::Cqmax => SortKey::Cqmax,
-            Self::ServoCharacterWidth => unreachable!(),
+            Self::ServoCharacterWidth | Self::ServoTextAreaColumns | Self::ServoTextAreaRows => {
+                unreachable!()
+            },
         }
     }
 }
@@ -480,11 +495,11 @@ impl NoCalcLength {
     /// Generally, font-dependent/relative units don't get text-only-zoomed,
     /// because the font they're relative to should be zoomed already.
     pub fn should_zoom_text(&self) -> bool {
-        !self.unit.is_font_relative() && self.unit != LengthUnit::ServoCharacterWidth
+        !self.unit.is_font_relative() && !self.unit.is_text_control_size()
     }
 
     /// Returns the SortKey for this length. Must not be called on the internal
-    /// `ServoCharacterWidth` unit.
+    /// text control units.
     pub(crate) fn sort_key(&self) -> crate::values::generics::calc::SortKey {
         self.unit.sort_key()
     }
@@ -657,6 +672,18 @@ impl NoCalcLength {
     #[inline]
     pub fn from_servo_character_width(value: i32) -> Self {
         Self::new(LengthUnit::ServoCharacterWidth, value as CSSFloat)
+    }
+
+    /// Construct an internal length for the width of a `<textarea>` of `cols` columns.
+    #[inline]
+    pub fn from_servo_textarea_columns(cols: i32) -> Self {
+        Self::new(LengthUnit::ServoTextAreaColumns, cols as CSSFloat)
+    }
+
+    /// Construct an internal length for the height of a `<textarea>` of `rows` rows.
+    #[inline]
+    pub fn from_servo_textarea_rows(rows: i32) -> Self {
+        Self::new(LengthUnit::ServoTextAreaRows, rows as CSSFloat)
     }
 
     /// Compute a font-relative length against the given base sizes. Must only
@@ -965,6 +992,23 @@ impl NoCalcLength {
         CSSPixelLength::new((container_length.to_f64_px() * factor as f64 / 100.0) as f32).finite()
     }
 
+    /// The width Blink gives one column of a text control (`LayoutTextControl::GetAvgCharWidth`),
+    /// and whether its widest glyph also counts towards a text field's size. `None` when the font
+    /// reports no average character width.
+    fn text_control_column_width(metrics: &FontMetrics) -> Option<(CSSFloat, bool)> {
+        let average = metrics.average_char_width?.px();
+        // Some fonts size their average width to full-width CJK glyphs; Blink then measures
+        // columns with the "0" advance alone.
+        if let Some(zero) = metrics.zero_advance_measure {
+            if average > zero.px() * 1.7 {
+                return Some((zero.px(), false));
+            }
+        }
+        // Blink rounds the average up when its fraction is at least one half
+        // (SimpleFontData::PlatformInit).
+        Some((average.max(average.round()), true))
+    }
+
     /// Computes a ServoCharacterWidth length the way Chrome sizes a text field of that many
     /// columns (`TextFieldIntrinsicInlineSize` in Blink's layout_box.cc): the font's average
     /// character width per column, plus the amount its widest glyph exceeds that average.
@@ -976,26 +1020,71 @@ impl NoCalcLength {
             FontMetricsOrientation::Horizontal,
             QueryFontMetricsFlags::NEEDS_CH,
         );
-        let (Some(average), Some(max)) = (metrics.average_char_width, metrics.max_char_width)
-        else {
+        let Some((column, uses_max)) = Self::text_control_column_width(&metrics) else {
             // This applies the *converting a character width to pixels* algorithm
             // as specified in HTML5 § 14.5.4.
             let font_size = context.style().get_font().clone_font_size().computed_size();
             let average_advance = font_size * 0.5;
             return (average_advance * (cols - 1.0) + font_size).finite();
         };
-        // Some fonts size their average width to full-width CJK glyphs; Blink then measures
-        // columns with the "0" advance alone.
-        if let Some(zero) = metrics.zero_advance_measure {
-            if average.px() > zero.px() * 1.7 {
-                return CSSPixelLength::new((zero.px() * cols).ceil()).finite();
-            }
-        }
-        // Blink rounds the average up when its fraction is at least one half, and takes the
-        // widest glyph in whole pixels (SimpleFontData::PlatformInit).
-        let average = average.px().max(average.px().round());
-        let extra = (max.px().round() - average).max(0.);
-        CSSPixelLength::new((average * cols + extra).ceil()).finite()
+        // Blink takes the widest glyph in whole pixels.
+        let extra = match metrics.max_char_width {
+            Some(max) if uses_max => (max.px().round() - column).max(0.),
+            _ => 0.,
+        };
+        CSSPixelLength::new((column * cols + extra).ceil()).finite()
+    }
+
+    /// Computes a ServoTextAreaColumns length the way Chrome sizes a `<textarea>` of that many
+    /// columns (`TextAreaIntrinsicInlineSize` in Blink's layout_box.cc): the columns at the
+    /// text control column width, plus room for the vertical scrollbar Chrome reserves even
+    /// when the text does not overflow.
+    fn servo_textarea_columns_to_computed_value(&self, context: &Context) -> computed::Length {
+        debug_assert_eq!(self.unit, LengthUnit::ServoTextAreaColumns);
+        /// The width of a classic (non-overlay) scrollbar in Chrome on Linux.
+        const SCROLLBAR_WIDTH: CSSFloat = 15.;
+        let cols = self.value as i32 as CSSFloat;
+        let metrics = context.query_font_metrics(
+            FontBaseSize::CurrentStyle,
+            FontMetricsOrientation::Horizontal,
+            QueryFontMetricsFlags::NEEDS_CH,
+        );
+        let column = match Self::text_control_column_width(&metrics) {
+            Some((column, _)) => column,
+            None => context.style().get_font().clone_font_size().computed_size().px() * 0.5,
+        };
+        CSSPixelLength::new((column * cols).ceil() + SCROLLBAR_WIDTH).finite()
+    }
+
+    /// Computes a ServoTextAreaRows length the way Chrome sizes a `<textarea>` of that many rows
+    /// (`TextAreaIntrinsicBlockSize` in Blink's layout_box.cc): that many lines.
+    fn servo_textarea_rows_to_computed_value(&self, context: &Context) -> computed::Length {
+        debug_assert_eq!(self.unit, LengthUnit::ServoTextAreaRows);
+        let rows = self.value as i32 as CSSFloat;
+        // Querying the font metrics also keeps this out of the rule cache, which does not key on
+        // the line height.
+        let metrics = context.query_font_metrics(
+            FontBaseSize::CurrentStyle,
+            FontMetricsOrientation::Horizontal,
+            QueryFontMetricsFlags::empty(),
+        );
+        let line_height = match (
+            context.style().get_font().clone_line_height(),
+            metrics.normal_line_height,
+        ) {
+            (computed::LineHeight::Normal, Some(normal_line_height)) => normal_line_height,
+            _ => {
+                context
+                    .builder
+                    .calc_line_height(
+                        context.device(),
+                        LineHeightBase::CurrentStyle,
+                        context.style().writing_mode,
+                    )
+                    .0
+            },
+        };
+        (line_height * rows).finite()
     }
 
     /// Computes a length with a given font-relative base size.
@@ -1020,8 +1109,14 @@ impl NoCalcLength {
         if unit.is_container_relative() {
             return self.container_relative_to_computed_value(context);
         }
-        debug_assert_eq!(unit, LengthUnit::ServoCharacterWidth);
-        self.servo_character_width_to_computed_value(context)
+        match unit {
+            LengthUnit::ServoCharacterWidth => self.servo_character_width_to_computed_value(context),
+            LengthUnit::ServoTextAreaColumns => {
+                self.servo_textarea_columns_to_computed_value(context)
+            },
+            LengthUnit::ServoTextAreaRows => self.servo_textarea_rows_to_computed_value(context),
+            _ => unreachable!("Unexpected length unit {unit:?}"),
+        }
     }
 }
 

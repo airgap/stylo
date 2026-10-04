@@ -26,6 +26,8 @@ pub struct FontMetrics {
     pub average_char_width: Option<Length>,
     /// The width of the font's bounding box: the extent of its widest glyph.
     pub max_char_width: Option<Length>,
+    /// The height of a line of this font under `line-height: normal`.
+    pub normal_line_height: Option<Length>,
     /// Script scale down factor for math-depth 1.
     /// https://w3c.github.io/mathml-core/#dfn-scriptpercentscaledown
     pub script_percent_scale_down: Option<f32>,
@@ -44,6 +46,7 @@ impl Default for FontMetrics {
             ascent: Length::new(0.0),
             average_char_width: None,
             max_char_width: None,
+            normal_line_height: None,
             script_percent_scale_down: None,
             script_script_percent_scale_down: None,
         }

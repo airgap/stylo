@@ -2453,6 +2453,30 @@ rule_types_allowed = ["style", "keyframe", "scope", "position-try"]
 servo_restyle_damage = "rebuild_box"
 affects = "layout"
 
+# The width and height that a text control's `size`, `cols` and `rows` attributes give its content
+# box, which layout uses as the control's intrinsic size, as Chrome does.
+[-servo-text-control-width]
+type = "NonNegativeLengthPercentageOrAuto"
+initial = "computed::NonNegativeLengthPercentageOrAuto::auto()"
+struct = "position"
+engine = "servo"
+spec = "Internal (not web-exposed)"
+animation_type = "none"
+enabled_in = "ua"
+servo_restyle_damage = "rebuild_box"
+affects = "layout"
+
+[-servo-text-control-height]
+type = "NonNegativeLengthPercentageOrAuto"
+initial = "computed::NonNegativeLengthPercentageOrAuto::auto()"
+struct = "position"
+engine = "servo"
+spec = "Internal (not web-exposed)"
+animation_type = "none"
+enabled_in = "ua"
+servo_restyle_damage = "rebuild_box"
+affects = "layout"
+
 [will-change]
 type = "WillChange"
 initial = "computed::WillChange::auto()"
