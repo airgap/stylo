@@ -265,6 +265,23 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             .set_adjusted_display(Display::Inline, false);
     }
 
+    /// Servo lays a ruby annotation out only from within the ruby that contains it, and does
+    /// not wrap one outside of a ruby in the anonymous ruby that
+    /// <https://drafts.csswg.org/css-ruby/#anon-gen-anon-ruby> asks for. Such an annotation is
+    /// an inline box instead, which renders it as the plain text it looks like in Chrome.
+    #[cfg(feature = "servo")]
+    fn adjust_for_ruby_text_outside_ruby(&mut self, layout_parent_style: &ComputedValues) {
+        use crate::values::specified::box_::DisplayInside;
+        if self.style.get_box().clone_display() != Display::RubyText
+            || layout_parent_style.get_box().clone_display().inside() == DisplayInside::Ruby
+        {
+            return;
+        }
+        self.style
+            .mutate_box()
+            .set_adjusted_display(Display::Inline, false);
+    }
+
     /// Apply the blockification rules based on the table in CSS 2.2 section 9.7.
     /// <https://drafts.csswg.org/css2/visuren.html#dis-pos-flo>
     /// A ::marker pseudo-element with 'list-style-position:outside' needs to
@@ -1119,6 +1136,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         self.adjust_for_br(element);
         #[cfg(feature = "servo")]
         self.adjust_for_webkit_box();
+        #[cfg(feature = "servo")]
+        self.adjust_for_ruby_text_outside_ruby(layout_parent_style);
         self.blockify_if_necessary(layout_parent_style, element);
         #[cfg(feature = "gecko")]
         self.adjust_for_webkit_line_clamp();

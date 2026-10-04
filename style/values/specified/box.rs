@@ -91,7 +91,6 @@ pub enum DisplayOutside {
     Block,
     TableCaption,
     InternalTable,
-    #[cfg(feature = "gecko")]
     InternalRuby,
 }
 
@@ -113,13 +112,11 @@ pub enum DisplayInside {
     TableFooterGroup,
     TableRow,
     TableCell,
-    #[cfg(feature = "gecko")]
     Ruby,
     #[cfg(feature = "gecko")]
     RubyBase,
     #[cfg(feature = "gecko")]
     RubyBaseContainer,
-    #[cfg(feature = "gecko")]
     RubyText,
     #[cfg(feature = "gecko")]
     RubyTextContainer,
@@ -141,7 +138,6 @@ impl DisplayInside {
     ///     — except for ruby, which defaults to inline.
     fn default_display_outside(self) -> DisplayOutside {
         match self {
-            #[cfg(feature = "gecko")]
             DisplayInside::Ruby => DisplayOutside::Inline,
             _ => DisplayOutside::Block,
         }
@@ -209,7 +205,6 @@ impl Display {
     pub const TableCaption: Self = Self(
         ((DisplayOutside::TableCaption as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Flow as u16,
     );
-    #[cfg(feature = "gecko")]
     pub const Ruby: Self =
         Self(((DisplayOutside::Inline as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Ruby as u16);
     pub const WebkitBox: Self = Self(
@@ -261,7 +256,6 @@ impl Display {
         ((DisplayOutside::InternalRuby as u16) << Self::OUTSIDE_SHIFT)
             | DisplayInside::RubyBaseContainer as u16,
     );
-    #[cfg(feature = "gecko")]
     pub const RubyText: Self = Self(
         ((DisplayOutside::InternalRuby as u16) << Self::OUTSIDE_SHIFT)
             | DisplayInside::RubyText as u16,
@@ -463,7 +457,6 @@ impl DisplayKeyword {
             "ruby-base" => Full(Display::RubyBase),
             #[cfg(feature = "gecko")]
             "ruby-base-container" => Full(Display::RubyBaseContainer),
-            #[cfg(feature = "gecko")]
             "ruby-text" => Full(Display::RubyText),
             #[cfg(feature = "gecko")]
             "ruby-text-container" => Full(Display::RubyTextContainer),
@@ -484,7 +477,6 @@ impl DisplayKeyword {
             "flow-root" => Inside(DisplayInside::FlowRoot),
             "table" => Inside(DisplayInside::Table),
             "grid" if grid_enabled() => Inside(DisplayInside::Grid),
-            #[cfg(feature = "gecko")]
             "ruby" => Inside(DisplayInside::Ruby),
         })
     }
@@ -506,7 +498,6 @@ impl ToCss for Display {
                 (DisplayOutside::Inline, DisplayInside::Grid) => dest.write_str("inline-grid"),
                 (DisplayOutside::Inline, DisplayInside::Flex) => dest.write_str("inline-flex"),
                 (DisplayOutside::Inline, DisplayInside::Table) => dest.write_str("inline-table"),
-                #[cfg(feature = "gecko")]
                 (DisplayOutside::Block, DisplayInside::Ruby) => dest.write_str("block ruby"),
                 (_, inside) => {
                     if self.is_list_item() {
@@ -539,7 +530,6 @@ impl ToTyped for Display {
         let outside = self.outside();
         let inside = self.inside();
 
-        #[cfg(feature = "gecko")]
         if outside == DisplayOutside::Block && inside == DisplayInside::Ruby {
             return Err(());
         }

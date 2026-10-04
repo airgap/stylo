@@ -87,6 +87,7 @@ pub enum PseudoElement {
     ServoAnonymousTable,
     ServoAnonymousTableCell,
     ServoAnonymousTableRow,
+    ServoRubyColumn,
     ServoTableGrid,
     ServoTableWrapper,
 }
@@ -128,6 +129,7 @@ impl ToCss for PseudoElement {
             ServoAnonymousTable => "::-servo-anonymous-table",
             ServoAnonymousTableCell => "::-servo-anonymous-table-cell",
             ServoAnonymousTableRow => "::-servo-anonymous-table-row",
+            ServoRubyColumn => "::-servo-ruby-column",
             ServoTableGrid => "::-servo-table-grid",
             ServoTableWrapper => "::-servo-table-wrapper",
         })
@@ -295,6 +297,7 @@ impl PseudoElement {
             | PseudoElement::ServoAnonymousTable
             | PseudoElement::ServoAnonymousTableCell
             | PseudoElement::ServoAnonymousTableRow
+            | PseudoElement::ServoRubyColumn
             | PseudoElement::ServoTableGrid
             | PseudoElement::ServoTableWrapper => PseudoElementCascadeType::Precomputed,
         }
@@ -787,6 +790,12 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
                     return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
                 }
                 ServoAnonymousTableCell
+            },
+            "-servo-ruby-column" => {
+                if !self.in_user_agent_stylesheet() {
+                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                }
+                ServoRubyColumn
             },
             "-servo-table-grid" => {
                 if !self.in_user_agent_stylesheet() {
