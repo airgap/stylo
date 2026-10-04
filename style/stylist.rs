@@ -4117,6 +4117,7 @@ impl CascadeData {
                     let animation = KeyframesAnimation::from_keyframes(
                         &keyframes_rule.keyframes,
                         keyframes_rule.vendor_prefix.clone(),
+                        stylesheet.contents(guard).origin,
                         guard,
                     );
                     self.animations.try_insert_with(

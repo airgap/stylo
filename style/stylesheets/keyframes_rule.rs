@@ -18,7 +18,7 @@ use crate::properties::{
 use crate::shared_lock::{DeepCloneWithLock, SharedRwLock, SharedRwLockReadGuard};
 use crate::shared_lock::{Locked, ToCssWithGuard};
 use crate::stylesheets::rule_parser::VendorPrefix;
-use crate::stylesheets::{CssRuleType, StylesheetContents};
+use crate::stylesheets::{CssRuleType, Origin, StylesheetContents};
 use crate::values::specified::animation::TimelineRangeName;
 use crate::values::{serialize_percentage, KeyframesName};
 use cssparser::{
@@ -452,6 +452,9 @@ pub struct KeyframesAnimation {
     pub properties_changed: PropertyDeclarationIdSet,
     /// Vendor prefix type the @keyframes has.
     pub vendor_prefix: Option<VendorPrefix>,
+    /// The origin of the stylesheet holding the @keyframes rule, whose lock guards the
+    /// declarations of its steps.
+    pub origin: Origin,
 }
 
 /// Get all the animated properties in a keyframes animation.
@@ -501,6 +504,7 @@ impl KeyframesAnimation {
     pub fn from_keyframes(
         keyframes: &[Arc<Locked<Keyframe>>],
         vendor_prefix: Option<VendorPrefix>,
+        origin: Origin,
         guard: &SharedRwLockReadGuard,
     ) -> Self {
         let mut result = KeyframesAnimation {
@@ -508,6 +512,7 @@ impl KeyframesAnimation {
             steps_with_range_name: vec![],
             properties_changed: PropertyDeclarationIdSet::default(),
             vendor_prefix,
+            origin,
         };
 
         if keyframes.is_empty() {
