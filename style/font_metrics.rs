@@ -22,6 +22,10 @@ pub struct FontMetrics {
     pub ic_width: Option<Length>,
     /// The ascent of the font (a value is always available for this).
     pub ascent: Length,
+    /// The average character width of the font, from the OS/2 table when it has one.
+    pub average_char_width: Option<Length>,
+    /// The width of the font's bounding box: the extent of its widest glyph.
+    pub max_char_width: Option<Length>,
     /// Script scale down factor for math-depth 1.
     /// https://w3c.github.io/mathml-core/#dfn-scriptpercentscaledown
     pub script_percent_scale_down: Option<f32>,
@@ -38,6 +42,8 @@ impl Default for FontMetrics {
             cap_height: None,
             ic_width: None,
             ascent: Length::new(0.0),
+            average_char_width: None,
+            max_char_width: None,
             script_percent_scale_down: None,
             script_script_percent_scale_down: None,
         }

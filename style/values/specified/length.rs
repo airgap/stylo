@@ -965,18 +965,37 @@ impl NoCalcLength {
         CSSPixelLength::new((container_length.to_f64_px() * factor as f64 / 100.0) as f32).finite()
     }
 
-    /// Computes a ServoCharacterWidth length against a reference font size.
-    fn servo_character_width_to_computed_value(
-        &self,
-        reference_font_size: computed::Length,
-    ) -> computed::Length {
+    /// Computes a ServoCharacterWidth length the way Chrome sizes a text field of that many
+    /// columns (`TextFieldIntrinsicInlineSize` in Blink's layout_box.cc): the font's average
+    /// character width per column, plus the amount its widest glyph exceeds that average.
+    fn servo_character_width_to_computed_value(&self, context: &Context) -> computed::Length {
         debug_assert_eq!(self.unit, LengthUnit::ServoCharacterWidth);
         let cols = self.value as i32 as CSSFloat;
-        // This applies the *converting a character width to pixels* algorithm
-        // as specified in HTML5 § 14.5.4.
-        let average_advance = reference_font_size * 0.5;
-        let max_advance = reference_font_size;
-        (average_advance * (cols - 1.0) + max_advance).finite()
+        let metrics = context.query_font_metrics(
+            FontBaseSize::CurrentStyle,
+            FontMetricsOrientation::Horizontal,
+            QueryFontMetricsFlags::NEEDS_CH,
+        );
+        let (Some(average), Some(max)) = (metrics.average_char_width, metrics.max_char_width)
+        else {
+            // This applies the *converting a character width to pixels* algorithm
+            // as specified in HTML5 § 14.5.4.
+            let font_size = context.style().get_font().clone_font_size().computed_size();
+            let average_advance = font_size * 0.5;
+            return (average_advance * (cols - 1.0) + font_size).finite();
+        };
+        // Some fonts size their average width to full-width CJK glyphs; Blink then measures
+        // columns with the "0" advance alone.
+        if let Some(zero) = metrics.zero_advance_measure {
+            if average.px() > zero.px() * 1.7 {
+                return CSSPixelLength::new((zero.px() * cols).ceil()).finite();
+            }
+        }
+        // Blink rounds the average up when its fraction is at least one half, and takes the
+        // widest glyph in whole pixels (SimpleFontData::PlatformInit).
+        let average = average.px().max(average.px().round());
+        let extra = (max.px().round() - average).max(0.);
+        CSSPixelLength::new((average * cols + extra).ceil()).finite()
     }
 
     /// Computes a length with a given font-relative base size.
@@ -1002,9 +1021,7 @@ impl NoCalcLength {
             return self.container_relative_to_computed_value(context);
         }
         debug_assert_eq!(unit, LengthUnit::ServoCharacterWidth);
-        self.servo_character_width_to_computed_value(
-            context.style().get_font().clone_font_size().computed_size(),
-        )
+        self.servo_character_width_to_computed_value(context)
     }
 }
 
