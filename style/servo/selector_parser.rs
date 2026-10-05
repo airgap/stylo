@@ -838,7 +838,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "-webkit-progress-value" => WebkitProgressValue,
             "-servo-select-arrow" => {
                 if !self.in_user_agent_stylesheet() {
-                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                    return Err(ParseError::custom(SelectorParseErrorKind::UnexpectedIdent))
                 }
                 ServoSelectArrow
             },
@@ -869,7 +869,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             },
             "-servo-ruby-column" => {
                 if !self.in_user_agent_stylesheet() {
-                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                    return Err(ParseError::custom(SelectorParseErrorKind::UnexpectedIdent))
                 }
                 ServoRubyColumn
             },
