@@ -52,9 +52,11 @@ pub enum PseudoElement {
     // Also, make sure the UA sheet has the !important rules some of the
     // APPLIES_TO_PLACEHOLDER properties expect!
     FirstLetter,
+    // Eager so that it can animate like ::before and ::after, but only generated for elements in
+    // the top layer.
+    Backdrop,
 
     // Non-eager pseudos.
-    Backdrop,
     DetailsContent,
     Marker,
 
@@ -67,9 +69,34 @@ pub enum PseudoElement {
     SliderFill,
     SliderThumb,
     SliderTrack,
+    WebkitInnerSpinButton,
+    WebkitMeterBar,
+    WebkitMeterEvenLessGoodValue,
+    WebkitMeterOptimumValue,
+    WebkitMeterSuboptimumValue,
+    WebkitProgressBar,
+    WebkitProgressValue,
+
+    // Pseudo-elements that Chrome exposes for its classic scrollbars and form-control parts,
+    // which have no counterpart in Servo. They parse so that the rules using them are kept
+    // (dropping a whole rule list over one of them breaks unrelated styling), but they never
+    // match anything.
+    WebkitOuterSpinButton,
+    WebkitResizer,
+    WebkitScrollbar,
+    WebkitScrollbarButton,
+    WebkitScrollbarCorner,
+    WebkitScrollbarThumb,
+    WebkitScrollbarTrack,
+    WebkitScrollbarTrackPiece,
+    WebkitSearchCancelButton,
+    WebkitSearchDecoration,
+    WebkitSearchResultsButton,
+    WebkitSearchResultsDecoration,
     MozProgressBar,
 
     // Private, Servo-specific implemented pseudos. Only matchable in UA sheet.
+    ServoSelectArrow,
     ServoTextControlInnerContainer,
     ServoTextControlInnerEditor,
 
@@ -78,6 +105,7 @@ pub enum PseudoElement {
     ServoAnonymousTable,
     ServoAnonymousTableCell,
     ServoAnonymousTableRow,
+    ServoRubyColumn,
     ServoTableGrid,
     ServoTableWrapper,
 }
@@ -105,6 +133,26 @@ impl ToCss for PseudoElement {
             SliderFill => "::slider-fill",
             SliderTrack => "::slider-track",
             SliderThumb => "::slider-thumb",
+            WebkitInnerSpinButton => "::-webkit-inner-spin-button",
+            WebkitMeterBar => "::-webkit-meter-bar",
+            WebkitMeterEvenLessGoodValue => "::-webkit-meter-even-less-good-value",
+            WebkitMeterOptimumValue => "::-webkit-meter-optimum-value",
+            WebkitMeterSuboptimumValue => "::-webkit-meter-suboptimum-value",
+            WebkitProgressBar => "::-webkit-progress-bar",
+            WebkitProgressValue => "::-webkit-progress-value",
+            ServoSelectArrow => "::-servo-select-arrow",
+            WebkitOuterSpinButton => "::-webkit-outer-spin-button",
+            WebkitResizer => "::-webkit-resizer",
+            WebkitScrollbar => "::-webkit-scrollbar",
+            WebkitScrollbarButton => "::-webkit-scrollbar-button",
+            WebkitScrollbarCorner => "::-webkit-scrollbar-corner",
+            WebkitScrollbarThumb => "::-webkit-scrollbar-thumb",
+            WebkitScrollbarTrack => "::-webkit-scrollbar-track",
+            WebkitScrollbarTrackPiece => "::-webkit-scrollbar-track-piece",
+            WebkitSearchCancelButton => "::-webkit-search-cancel-button",
+            WebkitSearchDecoration => "::-webkit-search-decoration",
+            WebkitSearchResultsButton => "::-webkit-search-results-button",
+            WebkitSearchResultsDecoration => "::-webkit-search-results-decoration",
             MozProgressBar => "::-moz-progress-bar",
             ServoTextControlInnerContainer => "::-servo-text-control-inner-container",
             ServoTextControlInnerEditor => "::-servo-text-control-inner-editor",
@@ -112,6 +160,7 @@ impl ToCss for PseudoElement {
             ServoAnonymousTable => "::-servo-anonymous-table",
             ServoAnonymousTableCell => "::-servo-anonymous-table-cell",
             ServoAnonymousTableRow => "::-servo-anonymous-table-row",
+            ServoRubyColumn => "::-servo-ruby-column",
             ServoTableGrid => "::-servo-table-grid",
             ServoTableWrapper => "::-servo-table-wrapper",
         })
@@ -122,10 +171,16 @@ impl ::selectors::parser::PseudoElement for PseudoElement {
     fn parses_as_element_backed(&self) -> bool {
         matches!(self, Self::DetailsContent)
     }
+
+    // Chrome accepts user-action states after its scrollbar parts, as in the common
+    // `::-webkit-scrollbar-thumb:hover`.
+    fn accepts_state_pseudo_classes(&self) -> bool {
+        self.is_unknown_webkit_pseudo_element()
+    }
 }
 
 /// The number of eager pseudo-elements. Keep this in sync with cascade_type.
-pub const EAGER_PSEUDO_COUNT: usize = 4;
+pub const EAGER_PSEUDO_COUNT: usize = 5;
 
 impl PseudoElement {
     /// Gets the canonical index of this eagerly-cascaded pseudo-element.
@@ -143,7 +198,7 @@ impl PseudoElement {
 
     /// An array of `None`, one per pseudo-element.
     pub fn pseudo_none_array<T>() -> [Option<T>; PSEUDO_COUNT] {
-        Default::default()
+        [const { None }; PSEUDO_COUNT]
     }
 
     /// Creates a pseudo-element from an eager index.
@@ -162,10 +217,25 @@ impl PseudoElement {
         self.is_before() || self.is_after()
     }
 
-    /// Whether this is an unknown ::-webkit- pseudo-element.
+    /// Whether this is a ::-webkit- pseudo-element that parses but never matches. The stylist
+    /// drops the rules that use one.
     #[inline]
     pub fn is_unknown_webkit_pseudo_element(&self) -> bool {
-        false
+        matches!(
+            *self,
+            PseudoElement::WebkitOuterSpinButton
+            | PseudoElement::WebkitResizer
+            | PseudoElement::WebkitScrollbar
+            | PseudoElement::WebkitScrollbarButton
+            | PseudoElement::WebkitScrollbarCorner
+            | PseudoElement::WebkitScrollbarThumb
+            | PseudoElement::WebkitScrollbarTrack
+            | PseudoElement::WebkitScrollbarTrackPiece
+            | PseudoElement::WebkitSearchCancelButton
+            | PseudoElement::WebkitSearchDecoration
+            | PseudoElement::WebkitSearchResultsButton
+            | PseudoElement::WebkitSearchResultsDecoration
+        )
     }
 
     /// Whether this pseudo-element is the ::marker pseudo.
@@ -254,9 +324,9 @@ impl PseudoElement {
             PseudoElement::After
             | PseudoElement::Before
             | PseudoElement::FirstLetter
-            | PseudoElement::Selection => PseudoElementCascadeType::Eager,
-            PseudoElement::Backdrop
-            | PseudoElement::ColorSwatch
+            | PseudoElement::Selection
+            | PseudoElement::Backdrop => PseudoElementCascadeType::Eager,
+            PseudoElement::ColorSwatch
             | PseudoElement::FileSelectorButton
             | PseudoElement::Marker
             | PseudoElement::Placeholder
@@ -264,6 +334,26 @@ impl PseudoElement {
             | PseudoElement::SliderFill
             | PseudoElement::SliderThumb
             | PseudoElement::SliderTrack
+            | PseudoElement::WebkitInnerSpinButton
+            | PseudoElement::WebkitMeterBar
+            | PseudoElement::WebkitMeterEvenLessGoodValue
+            | PseudoElement::WebkitMeterOptimumValue
+            | PseudoElement::WebkitMeterSuboptimumValue
+            | PseudoElement::WebkitProgressBar
+            | PseudoElement::WebkitProgressValue
+            | PseudoElement::ServoSelectArrow
+            | PseudoElement::WebkitOuterSpinButton
+            | PseudoElement::WebkitResizer
+            | PseudoElement::WebkitScrollbar
+            | PseudoElement::WebkitScrollbarButton
+            | PseudoElement::WebkitScrollbarCorner
+            | PseudoElement::WebkitScrollbarThumb
+            | PseudoElement::WebkitScrollbarTrack
+            | PseudoElement::WebkitScrollbarTrackPiece
+            | PseudoElement::WebkitSearchCancelButton
+            | PseudoElement::WebkitSearchDecoration
+            | PseudoElement::WebkitSearchResultsButton
+            | PseudoElement::WebkitSearchResultsDecoration
             | PseudoElement::MozProgressBar
             | PseudoElement::ServoTextControlInnerContainer
             | PseudoElement::ServoTextControlInnerEditor => PseudoElementCascadeType::Lazy,
@@ -271,6 +361,7 @@ impl PseudoElement {
             | PseudoElement::ServoAnonymousTable
             | PseudoElement::ServoAnonymousTableCell
             | PseudoElement::ServoAnonymousTableRow
+            | PseudoElement::ServoRubyColumn
             | PseudoElement::ServoTableGrid
             | PseudoElement::ServoTableWrapper => PseudoElementCascadeType::Precomputed,
         }
@@ -353,6 +444,14 @@ impl PseudoElement {
                     | Self::SliderFill
                     | Self::SliderThumb
                     | Self::SliderTrack
+                    | Self::WebkitInnerSpinButton
+                    | Self::WebkitMeterBar
+                    | Self::WebkitMeterEvenLessGoodValue
+                    | Self::WebkitMeterOptimumValue
+                    | Self::WebkitMeterSuboptimumValue
+                    | Self::WebkitProgressBar
+                    | Self::WebkitProgressValue
+                    | Self::ServoSelectArrow
                     | Self::MozProgressBar
                     | Self::ServoTextControlInnerContainer
                     | Self::ServoTextControlInnerEditor,
@@ -621,7 +720,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
         let pseudo_class = match_ignore_ascii_case! { &name,
             "active" => NonTSPseudoClass::Active,
             "any-link" => NonTSPseudoClass::AnyLink,
-            "autofill" => NonTSPseudoClass::Autofill,
+            "autofill" | "-webkit-autofill" => NonTSPseudoClass::Autofill,
             "checked" => NonTSPseudoClass::Checked,
             "default" => NonTSPseudoClass::Default,
             "defined" => NonTSPseudoClass::Defined,
@@ -632,6 +731,7 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "focus-within" => NonTSPseudoClass::FocusWithin,
             "fullscreen" => NonTSPseudoClass::Fullscreen,
             "hover" => NonTSPseudoClass::Hover,
+            "in-range" => NonTSPseudoClass::InRange,
             "indeterminate" => NonTSPseudoClass::Indeterminate,
             "invalid" => NonTSPseudoClass::Invalid,
             "link" => NonTSPseudoClass::Link,
@@ -699,6 +799,21 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "details-content" => DetailsContent,
             "color-swatch" => ColorSwatch,
             "placeholder" => Placeholder,
+            // Chrome's legacy names for ::placeholder and ::file-selector-button.
+            "-webkit-input-placeholder" => Placeholder,
+            "-webkit-file-upload-button" => FileSelectorButton,
+            "-webkit-outer-spin-button" => WebkitOuterSpinButton,
+            "-webkit-resizer" => WebkitResizer,
+            "-webkit-scrollbar" => WebkitScrollbar,
+            "-webkit-scrollbar-button" => WebkitScrollbarButton,
+            "-webkit-scrollbar-corner" => WebkitScrollbarCorner,
+            "-webkit-scrollbar-thumb" => WebkitScrollbarThumb,
+            "-webkit-scrollbar-track" => WebkitScrollbarTrack,
+            "-webkit-scrollbar-track-piece" => WebkitScrollbarTrackPiece,
+            "-webkit-search-cancel-button" => WebkitSearchCancelButton,
+            "-webkit-search-decoration" => WebkitSearchDecoration,
+            "-webkit-search-results-button" => WebkitSearchResultsButton,
+            "-webkit-search-results-decoration" => WebkitSearchResultsDecoration,
             "-servo-text-control-inner-container" => {
                 if !self.in_user_agent_stylesheet() {
                     return Err(ParseError::custom(SelectorParseErrorKind::UnexpectedIdent))
@@ -714,6 +829,19 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
             "slider-fill" => SliderFill,
             "slider-thumb" => SliderThumb,
             "slider-track" => SliderTrack,
+            "-webkit-inner-spin-button" => WebkitInnerSpinButton,
+            "-webkit-meter-bar" => WebkitMeterBar,
+            "-webkit-meter-even-less-good-value" => WebkitMeterEvenLessGoodValue,
+            "-webkit-meter-optimum-value" => WebkitMeterOptimumValue,
+            "-webkit-meter-suboptimum-value" => WebkitMeterSuboptimumValue,
+            "-webkit-progress-bar" => WebkitProgressBar,
+            "-webkit-progress-value" => WebkitProgressValue,
+            "-servo-select-arrow" => {
+                if !self.in_user_agent_stylesheet() {
+                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                }
+                ServoSelectArrow
+            },
             "-moz-progress-bar" => MozProgressBar,
             "-servo-anonymous-box" => {
                 if !self.in_user_agent_stylesheet() {
@@ -738,6 +866,12 @@ impl<'a, 'i> ::selectors::Parser<'i> for SelectorParser<'a> {
                     return Err(ParseError::custom(SelectorParseErrorKind::UnexpectedIdent))
                 }
                 ServoAnonymousTableCell
+            },
+            "-servo-ruby-column" => {
+                if !self.in_user_agent_stylesheet() {
+                    return Err(location.new_custom_error(SelectorParseErrorKind::UnexpectedIdent(name.clone())))
+                }
+                ServoRubyColumn
             },
             "-servo-table-grid" => {
                 if !self.in_user_agent_stylesheet() {

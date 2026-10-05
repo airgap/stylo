@@ -489,6 +489,45 @@ fn is_base_appearance(context: &computed::Context) -> bool {
     }
 }
 
+/// Servo has no native theme: the UA sheet emulates each widget's native look with ordinary rules,
+/// and its `@appearance-base` rules restyle the widget for when `appearance` turns that look off
+/// (https://drafts.csswg.org/css-ui-4/#appearance-switching). A widget (an element with a
+/// `-moz-default-appearance`) that computes to `appearance: none` starts such a subtree, so its
+/// pseudo-elements and UA shadow parts drop the native look with it; a widget that keeps its native
+/// look ends the subtree again. Returns `None` for elements that are not widgets.
+#[cfg(feature = "servo")]
+fn uses_primitive_appearance(context: &computed::Context) -> Option<bool> {
+    use computed::Appearance;
+    let box_style = context.builder.get_box();
+    if box_style.clone__moz_default_appearance() == Appearance::None {
+        return None;
+    }
+    Some(box_style.clone_appearance() == Appearance::None)
+}
+
+/// Starts or ends the `@appearance-base` subtree for Servo. Runs after `-moz-default-appearance`
+/// and again after `appearance`, since a widget that declares no `appearance` must still end a
+/// subtree inherited from its parent.
+#[cfg(feature = "servo")]
+fn update_appearance_base_subtree(context: &mut computed::Context) {
+    let primitive = uses_primitive_appearance(context);
+    if is_base_appearance(context) || primitive == Some(true) {
+        context
+            .style()
+            .add_flags(ComputedValueFlags::IS_IN_APPEARANCE_BASE_SUBTREE);
+        context
+            .included_cascade_flags
+            .insert(RuleCascadeFlags::APPEARANCE_BASE);
+    } else if primitive == Some(false) {
+        context
+            .style()
+            .remove_flags(ComputedValueFlags::IS_IN_APPEARANCE_BASE_SUBTREE);
+        context
+            .included_cascade_flags
+            .remove(RuleCascadeFlags::APPEARANCE_BASE);
+    }
+}
+
 fn tweak_when_ignoring_colors(
     context: &computed::Context,
     longhand_id: LonghandId,
@@ -953,6 +992,7 @@ impl<'a> Cascade<'a> {
         use crate::properties::PrioritaryPropertyId::*;
         match id {
             Appearance => {
+                #[cfg(feature = "gecko")]
                 if is_base_appearance(context) {
                     context
                         .style()
@@ -961,6 +1001,12 @@ impl<'a> Cascade<'a> {
                         .included_cascade_flags
                         .insert(RuleCascadeFlags::APPEARANCE_BASE);
                 }
+                #[cfg(feature = "servo")]
+                update_appearance_base_subtree(context);
+            },
+            MozDefaultAppearance => {
+                #[cfg(feature = "servo")]
+                update_appearance_base_subtree(context);
             },
             WritingMode | Direction | TextOrientation => {
                 context.builder.writing_mode =
@@ -1012,7 +1058,7 @@ impl<'a> Cascade<'a> {
                 context.builder.color_scheme =
                     context.builder.get_inherited_ui().color_scheme_bits();
             },
-            MozDefaultAppearance | MathDepth | FontWeight | FontWidth | FontStyle
+            MathDepth | FontWeight | FontWidth | FontStyle
             | FontSizeAdjust | ForcedColorAdjust | LineHeight => {},
         }
     }

@@ -129,21 +129,6 @@ impl ComputedValues {
         self.pseudo() == Some(PseudoElement::FirstLine)
     }
 
-    /// Returns true if the display property is changed from 'none' to others.
-    pub fn is_display_property_changed_from_none(
-        &self,
-        old_values: Option<&ComputedValues>
-    ) -> bool {
-        use crate::properties::longhands::display::computed_value::T as Display;
-
-        old_values.is_some_and(|old| {
-            let old_display_style = old.get_box().clone_display();
-            let new_display_style = self.get_box().clone_display();
-            old_display_style == Display::None &&
-            new_display_style != Display::None
-        })
-    }
-
     /// Calls the given function for each cached lazy pseudo-element style.
     pub fn each_cached_lazy_pseudo<F>(&self, mut f: F)
     where

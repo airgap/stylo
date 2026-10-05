@@ -166,6 +166,9 @@ impl Device {
                 None
             },
             ascent: gecko_metrics.mAscent,
+            average_char_width: None,
+            max_char_width: None,
+            normal_line_height: None,
             script_percent_scale_down: if gecko_metrics.mScriptPercentScaleDown > 0. {
                 Some(gecko_metrics.mScriptPercentScaleDown)
             } else {

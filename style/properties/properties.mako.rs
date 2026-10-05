@@ -1653,6 +1653,30 @@ impl ComputedValues {
         self.pseudo().is_some()
     }
 
+    /// Whether this style puts its element in the top layer, like StyleBuilder::in_top_layer.
+    #[cfg(feature = "servo")]
+    pub fn in_top_layer(&self) -> bool {
+        matches!(self.get_box().clone__servo_top_layer(),
+                 longhands::_servo_top_layer::computed_value::T::Top) ||
+            matches!(self.get_box().clone_overlay(),
+                     longhands::overlay::computed_value::T::Auto)
+    }
+
+    /// Returns true if the display property is changed from 'none' to others.
+    pub fn is_display_property_changed_from_none(
+        &self,
+        old_values: Option<&ComputedValues>
+    ) -> bool {
+        use crate::properties::longhands::display::computed_value::T as Display;
+
+        old_values.map_or(false, |old| {
+            let old_display_style = old.get_box().clone_display();
+            let new_display_style = self.get_box().clone_display();
+            old_display_style == Display::None &&
+            new_display_style != Display::None
+        })
+    }
+
     /// Returns whether this style's display value is equal to contents.
     pub fn is_display_contents(&self) -> bool {
         self.clone_display().is_contents()
@@ -2572,11 +2596,14 @@ impl<'a> StyleBuilder<'a> {
         self.get_box().clone_position().is_absolutely_positioned()
     }
 
-    /// Whether this style has a top-layer style.
+    /// Whether this style has a top-layer style. An element whose removal from the top layer is
+    /// deferred by a transition of `overlay` stays there until `overlay` becomes `none`.
     #[cfg(feature = "servo")]
     pub fn in_top_layer(&self) -> bool {
         matches!(self.get_box().clone__servo_top_layer(),
-                 longhands::_servo_top_layer::computed_value::T::Top)
+                 longhands::_servo_top_layer::computed_value::T::Top) ||
+            matches!(self.get_box().clone_overlay(),
+                     longhands::overlay::computed_value::T::Auto)
     }
 
     /// Whether this style has a top-layer style.

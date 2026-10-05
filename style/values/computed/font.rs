@@ -400,6 +400,15 @@ impl FontFamily {
         Self::generic(GenericFontFamily::Serif).clone()
     }
 
+    /// The initial `font-family`: `serif`, marked as initial so that font selection can use the
+    /// language's standard font instead, which is not a serif one for every language.
+    pub fn initial() -> Self {
+        Self {
+            is_initial: true,
+            ..Self::serif()
+        }
+    }
+
     /// Returns the font family for `-moz-bullet-font`.
     #[cfg(feature = "gecko")]
     pub(crate) fn moz_bullet() -> &'static Self {

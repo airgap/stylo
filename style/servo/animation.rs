@@ -25,6 +25,7 @@ use crate::selector_parser::PseudoElement;
 use crate::shared_lock::{Locked, SharedRwLock};
 use crate::style_resolver::StyleResolverForElement;
 use crate::stylesheets::keyframes_rule::{KeyframesAnimation, KeyframesStep, KeyframesStepValue};
+use crate::stylesheets::Origin;
 use crate::stylesheets::layer_rule::LayerOrder;
 use crate::values::animated::{Animate, Procedure};
 use crate::values::computed::TimingFunction;
@@ -170,7 +171,7 @@ impl IntermediateComputedKeyframe {
                 intermediate_steps.push(std::mem::replace(&mut current_step, new_step));
             }
 
-            current_step.update_from_step(step, context, base_style);
+            current_step.update_from_step(step, animation.origin, context, base_style);
         }
         intermediate_steps.push(current_step);
 
@@ -185,12 +186,13 @@ impl IntermediateComputedKeyframe {
     fn update_from_step(
         &mut self,
         step: &KeyframesStep,
+        origin: Origin,
         context: &SharedStyleContext,
         base_style: &ComputedValues,
     ) {
         // Each keyframe declaration may optionally specify a timing function, falling
         // back to the one defined global for the animation.
-        let guard = &context.guards.author;
+        let guard = context.guards.for_origin(origin);
         if let Some(timing_function) = step.get_animation_timing_function(&guard) {
             self.timing_function = Some(timing_function.to_computed_value_without_context());
         }
@@ -1319,8 +1321,13 @@ impl ElementAnimationSet {
             None => return,
         };
 
-        // If the style of this element is display:none, then cancel all active transitions.
-        if after_change_style.get_box().clone_display().is_none() {
+        // If the style of this element is display:none, then cancel all active transitions, unless
+        // display itself transitions discretely: the element then stays rendered until that
+        // transition ends, so that it can animate out.
+        // <https://drafts.csswg.org/css-transitions-2/#transition-behavior-property>
+        if after_change_style.get_box().clone_display().is_none()
+            && !transitions_display_discretely(after_change_style)
+        {
             self.cancel_active_transitions();
             return;
         }
@@ -1746,6 +1753,16 @@ impl DocumentAnimationSet {
             set.cancel_all_animations();
         }
     }
+}
+
+/// Whether `display` has a matching transition-property value whose transition-behavior is
+/// allow-discrete.
+fn transitions_display_discretely(style: &ComputedValues) -> bool {
+    let ui = style.get_ui();
+    style.transition_properties().any(|transition| {
+        transition.property.as_borrowed() == PropertyDeclarationId::Longhand(LonghandId::Display)
+            && ui.transition_behavior_mod(transition.index) == TransitionBehavior::AllowDiscrete
+    })
 }
 
 /// Kick off any new transitions for this node and return all of the properties that are

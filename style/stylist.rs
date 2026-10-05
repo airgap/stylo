@@ -3405,6 +3405,13 @@ pub fn replace_parent_selector_with_implicit_scope(
 }
 
 impl CascadeData {
+    /// Whether these stylesheets have any `@container` rule, whose matching depends on the
+    /// layout of the containers.
+    pub fn has_container_queries(&self) -> bool {
+        // The first condition is the "no condition" placeholder.
+        self.container_conditions.len() > 1
+    }
+
     /// Creates an empty `CascadeData`.
     pub fn new() -> Self {
         Self {
@@ -4126,6 +4133,7 @@ impl CascadeData {
                     let animation = KeyframesAnimation::from_keyframes(
                         &keyframes_rule.keyframes,
                         keyframes_rule.vendor_prefix.clone(),
+                        stylesheet.contents(guard).origin,
                         guard,
                     );
                     self.animations.try_insert_with(

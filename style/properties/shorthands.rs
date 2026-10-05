@@ -545,7 +545,6 @@ pub mod border {
     }
 }
 
-#[cfg(feature = "gecko")]
 pub mod container {
     use super::*;
     pub use crate::properties::generated::shorthands::container::*;
@@ -848,7 +847,6 @@ pub mod column_rule {
     }
 }
 
-#[cfg(feature = "gecko")]
 pub mod text_wrap {
     pub use crate::properties::generated::shorthands::text_wrap::*;
 
@@ -1004,7 +1002,6 @@ pub mod white_space {
     }
 }
 
-#[cfg(feature = "gecko")]
 pub mod _webkit_text_stroke {
     pub use crate::properties::generated::shorthands::_webkit_text_stroke::*;
 
@@ -3146,9 +3143,9 @@ pub mod text_decoration {
     pub use crate::properties::generated::shorthands::text_decoration::*;
 
     use super::*;
-    use crate::properties::longhands::text_decoration_thickness;
     use crate::properties::longhands::{
         text_decoration_color, text_decoration_line, text_decoration_style,
+        text_decoration_thickness,
     };
 
     pub fn parse_value(
@@ -3175,12 +3172,12 @@ pub mod text_decoration {
             return Err(ParseError::custom(StyleParseErrorKind::UnspecifiedError));
         }
 
-        return Ok(expanded! {
+        Ok(expanded! {
             text_decoration_line: unwrap_or_initial!(text_decoration_line, line),
             text_decoration_style: unwrap_or_initial!(text_decoration_style, style),
             text_decoration_color: unwrap_or_initial!(text_decoration_color, color),
             text_decoration_thickness: unwrap_or_initial!(text_decoration_thickness, thickness),
-        });
+        })
     }
 
     impl<'a> ToCss for LonghandsToSerialize<'a> {

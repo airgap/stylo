@@ -138,7 +138,6 @@ pub enum DisplayOutside {
     Block,
     TableCaption,
     InternalTable,
-    #[cfg(feature = "gecko")]
     InternalRuby,
 }
 
@@ -160,17 +159,14 @@ pub enum DisplayInside {
     TableFooterGroup,
     TableRow,
     TableCell,
-    #[cfg(feature = "gecko")]
     Ruby,
     #[cfg(feature = "gecko")]
     RubyBase,
     #[cfg(feature = "gecko")]
     RubyBaseContainer,
-    #[cfg(feature = "gecko")]
     RubyText,
     #[cfg(feature = "gecko")]
     RubyTextContainer,
-    #[cfg(feature = "gecko")]
     WebkitBox,
 }
 
@@ -189,7 +185,6 @@ impl DisplayInside {
     ///     — except for ruby, which defaults to inline.
     fn default_display_outside(self) -> DisplayOutside {
         match self {
-            #[cfg(feature = "gecko")]
             DisplayInside::Ruby => DisplayOutside::Inline,
             _ => DisplayOutside::Block,
         }
@@ -258,14 +253,11 @@ impl Display {
     pub const TableCaption: Self = Self(
         ((DisplayOutside::TableCaption as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Flow as u16,
     );
-    #[cfg(feature = "gecko")]
     pub const Ruby: Self =
         Self(((DisplayOutside::Inline as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Ruby as u16);
-    #[cfg(feature = "gecko")]
     pub const WebkitBox: Self = Self(
         ((DisplayOutside::Block as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::WebkitBox as u16,
     );
-    #[cfg(feature = "gecko")]
     pub const WebkitInlineBox: Self = Self(
         ((DisplayOutside::Inline as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::WebkitBox as u16,
     );
@@ -312,7 +304,6 @@ impl Display {
         ((DisplayOutside::InternalRuby as u16) << Self::OUTSIDE_SHIFT)
             | DisplayInside::RubyBaseContainer as u16,
     );
-    #[cfg(feature = "gecko")]
     pub const RubyText: Self = Self(
         ((DisplayOutside::InternalRuby as u16) << Self::OUTSIDE_SHIFT)
             | DisplayInside::RubyText as u16,
@@ -514,13 +505,10 @@ impl DisplayKeyword {
             "ruby-base" => Full(Display::RubyBase),
             #[cfg(feature = "gecko")]
             "ruby-base-container" => Full(Display::RubyBaseContainer),
-            #[cfg(feature = "gecko")]
             "ruby-text" => Full(Display::RubyText),
             #[cfg(feature = "gecko")]
             "ruby-text-container" => Full(Display::RubyTextContainer),
-            #[cfg(feature = "gecko")]
             "-webkit-box" => Full(Display::WebkitBox),
-            #[cfg(feature = "gecko")]
             "-webkit-inline-box" => Full(Display::WebkitInlineBox),
 
             /// <display-outside> = block | inline | run-in
@@ -537,7 +525,6 @@ impl DisplayKeyword {
             "flow-root" => Inside(DisplayInside::FlowRoot),
             "table" => Inside(DisplayInside::Table),
             "grid" if grid_enabled() => Inside(DisplayInside::Grid),
-            #[cfg(feature = "gecko")]
             "ruby" => Inside(DisplayInside::Ruby),
         })
     }
@@ -553,14 +540,12 @@ impl ToCss for Display {
         match *self {
             Display::Block | Display::Inline => outside.to_css(dest),
             Display::InlineBlock => dest.write_str("inline-block"),
-            #[cfg(feature = "gecko")]
             Display::WebkitInlineBox => dest.write_str("-webkit-inline-box"),
             Display::TableCaption => dest.write_str("table-caption"),
             _ => match (outside, inside) {
                 (DisplayOutside::Inline, DisplayInside::Grid) => dest.write_str("inline-grid"),
                 (DisplayOutside::Inline, DisplayInside::Flex) => dest.write_str("inline-flex"),
                 (DisplayOutside::Inline, DisplayInside::Table) => dest.write_str("inline-table"),
-                #[cfg(feature = "gecko")]
                 (DisplayOutside::Block, DisplayInside::Ruby) => dest.write_str("block ruby"),
                 (_, inside) => {
                     if self.is_list_item() {
@@ -593,7 +578,6 @@ impl ToTyped for Display {
         let outside = self.outside();
         let inside = self.inside();
 
-        #[cfg(feature = "gecko")]
         if outside == DisplayOutside::Block && inside == DisplayInside::Ruby {
             return Err(());
         }
@@ -924,8 +908,8 @@ pub enum ScrollSnapStrictness {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct ScrollSnapType {
-    axis: ScrollSnapAxis,
-    strictness: ScrollSnapStrictness,
+    pub axis: ScrollSnapAxis,
+    pub strictness: ScrollSnapStrictness,
 }
 
 impl ScrollSnapType {
@@ -1018,8 +1002,8 @@ pub enum ScrollSnapAlignKeyword {
 #[repr(C)]
 #[typed(todo_derive_fields)]
 pub struct ScrollSnapAlign {
-    block: ScrollSnapAlignKeyword,
-    inline: ScrollSnapAlignKeyword,
+    pub block: ScrollSnapAlignKeyword,
+    pub inline: ScrollSnapAlignKeyword,
 }
 
 impl ScrollSnapAlign {

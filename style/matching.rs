@@ -26,7 +26,7 @@ use crate::rule_tree::{CascadeLevel, CascadeOrigin, StrongRuleNode};
 use crate::selector_parser::{PseudoElement, RestyleDamage};
 use crate::shared_lock::Locked;
 use crate::style_resolver::StyleResolverForElement;
-use crate::style_resolver::{PseudoElementResolution, ResolvedElementStyles};
+use crate::style_resolver::{PrimaryStyle, PseudoElementResolution, ResolvedElementStyles};
 use crate::stylesheets::layer_rule::LayerOrder;
 use crate::stylist::RuleInclusion;
 use crate::traversal_flags::TraversalFlags;
@@ -344,24 +344,26 @@ trait PrivateMatchMethods: TElement {
         true
     }
 
-    #[cfg(feature = "gecko")]
+    /// Resolves the starting style of an element, or of one of its pseudo-elements, which is its
+    /// before-change style when it has no previous style or stops being display: none.
+    /// <https://drafts.csswg.org/css-transitions-2/#defining-before-change-style>
     fn maybe_resolve_starting_style(
         &self,
         context: &mut StyleContext<Self>,
         old_values: Option<&Arc<ComputedValues>>,
-        new_styles: &ResolvedElementStyles,
+        new_values: &Arc<ComputedValues>,
+        pseudo: Option<(&PseudoElement, &PrimaryStyle)>,
     ) -> Option<Arc<ComputedValues>> {
         // For both cases:
         // If there is no transitions specified we don't have to resolve starting style.
-        let new_primary = new_styles.primary_style();
-        if !new_primary.get_ui().specifies_transitions() {
+        if !new_values.get_ui().specifies_transitions() {
             return None;
         }
 
         // We resolve starting style only if we don't have before-change-style, or we change from
         // display:none.
         if old_values.is_some()
-            && !new_primary.is_display_property_changed_from_none(old_values.map(|s| &**s))
+            && !new_values.is_display_property_changed_from_none(old_values.map(|s| &**s))
         {
             return None;
         }
@@ -373,7 +375,7 @@ trait PrivateMatchMethods: TElement {
             PseudoElementResolution::IfApplicable,
         );
 
-        let starting_style = resolver.resolve_starting_style(new_primary)?;
+        let starting_style = resolver.resolve_starting_style(new_values, pseudo)?;
         if starting_style.style().clone_display().is_none() {
             return None;
         }
@@ -394,7 +396,12 @@ trait PrivateMatchMethods: TElement {
         old_values: Option<&Arc<ComputedValues>>,
         new_styles: &mut ResolvedElementStyles,
     ) -> Option<Arc<ComputedValues>> {
-        let starting_values = self.maybe_resolve_starting_style(context, old_values, new_styles);
+        let starting_values = self.maybe_resolve_starting_style(
+            context,
+            old_values,
+            new_styles.primary_style(),
+            /* pseudo = */ None,
+        );
         let before_change_or_starting = starting_values.as_ref().or(old_values);
         let new_values = new_styles.primary_style_mut();
 
@@ -550,9 +557,16 @@ trait PrivateMatchMethods: TElement {
         use crate::animation::AnimationSetKey;
         use crate::dom::TDocument;
 
+        let starting_values = self.maybe_resolve_starting_style(
+            context,
+            old_styles.primary.as_ref(),
+            new_resolved_styles.primary_style(),
+            /* pseudo = */ None,
+        );
         let style_changed = self.process_animations_for_style(
             context,
             &mut old_styles.primary,
+            starting_values,
             new_resolved_styles.primary_style_mut(),
             /* pseudo_element = */ None,
         );
@@ -599,6 +613,32 @@ trait PrivateMatchMethods: TElement {
             }
         }
 
+        // An element whose removal from the top layer is deferred by a transition of `overlay` was
+        // matched as out of it, before that transition applied, so its ::backdrop has to be
+        // resolved now for it to stay and animate out.
+        if new_resolved_styles.primary_style().in_top_layer()
+            && new_resolved_styles
+                .pseudos
+                .get(&PseudoElement::Backdrop)
+                .is_none()
+        {
+            let backdrop_style = StyleResolverForElement::new(
+                *self,
+                context,
+                RuleInclusion::All,
+                PseudoElementResolution::IfApplicable,
+            )
+            .resolve_pseudo_style_with_default_parents(
+                &PseudoElement::Backdrop,
+                &new_resolved_styles.primary,
+            );
+            if let Some(backdrop_style) = backdrop_style {
+                new_resolved_styles
+                    .pseudos
+                    .set(&PseudoElement::Backdrop, backdrop_style.0);
+            }
+        }
+
         self.process_animations_for_pseudo(
             context,
             old_styles,
@@ -610,6 +650,12 @@ trait PrivateMatchMethods: TElement {
             old_styles,
             new_resolved_styles,
             PseudoElement::After,
+        );
+        self.process_animations_for_pseudo(
+            context,
+            old_styles,
+            new_resolved_styles,
+            PseudoElement::Backdrop,
         );
     }
 
@@ -637,9 +683,16 @@ trait PrivateMatchMethods: TElement {
         };
 
         let old_style = old_styles.pseudos.get(&pseudo_element).cloned();
+        let starting_values = self.maybe_resolve_starting_style(
+            context,
+            old_style.as_ref(),
+            &style,
+            Some((&pseudo_element, &new_resolved_styles.primary)),
+        );
         self.process_animations_for_style(
             context,
             &old_style,
+            starting_values,
             &style,
             Some(pseudo_element.clone()),
         );
@@ -701,10 +754,13 @@ trait PrivateMatchMethods: TElement {
         &self,
         context: &mut StyleContext<Self>,
         old_values: &Option<Arc<ComputedValues>>,
+        starting_values: Option<Arc<ComputedValues>>,
         new_values: &Arc<ComputedValues>,
         pseudo_element: Option<PseudoElement>,
     ) -> bool {
         use crate::animation::{AnimationSetKey, AnimationState};
+
+        let before_change_style = starting_values.as_ref().or(old_values.as_ref());
 
         // We need to call this before accessing the `ElementAnimationSet` from the
         // map because this call will do a RwLock::read().
@@ -717,7 +773,7 @@ trait PrivateMatchMethods: TElement {
 
         let might_need_transitions_update = self.might_need_transitions_update(
             context,
-            old_values.as_deref(),
+            before_change_style.map(|s| &**s),
             new_values,
             pseudo_element,
         );
@@ -758,7 +814,7 @@ trait PrivateMatchMethods: TElement {
         animation_set.update_transitions_for_new_style(
             might_need_transitions_update,
             &shared_context,
-            old_values.as_ref(),
+            before_change_style,
             after_change_style.as_ref().unwrap_or(new_values),
         );
 

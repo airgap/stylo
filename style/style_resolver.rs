@@ -353,6 +353,20 @@ where
         })
     }
 
+    /// Match and cascade an eager pseudo-element of an element whose primary style is already
+    /// resolved, using the default parent for inheritance.
+    pub fn resolve_pseudo_style_with_default_parents(
+        &mut self,
+        pseudo: &PseudoElement,
+        primary_style: &PrimaryStyle,
+    ) -> Option<ResolvedStyle> {
+        with_default_parent_styles(self.element, |_, layout_parent_style| {
+            let layout_parent_style_for_pseudo =
+                layout_parent_style_for_pseudo(primary_style, layout_parent_style);
+            self.resolve_pseudo_style(pseudo, primary_style, layout_parent_style_for_pseudo)
+        })
+    }
+
     /// Cascade a set of rules for pseudo element, using the default parent for inheritance.
     pub fn cascade_style_and_visited_for_pseudo_with_default_parents(
         &mut self,
@@ -614,21 +628,31 @@ where
     }
 
     /// Resolve the starting style by recascading with @starting-style rules included, similar to
-    /// how after_change_style works.
+    /// how after_change_style works. `pseudo` is the pseudo-element that `style` belongs to, if
+    /// any, together with the style of its originating element.
     pub fn resolve_starting_style(
         &mut self,
-        primary_style: &Arc<ComputedValues>,
+        style: &Arc<ComputedValues>,
+        pseudo: Option<(&PseudoElement, &PrimaryStyle)>,
     ) -> Option<ResolvedStyle> {
-        if !RuleTree::has_starting_style(primary_style.rules()) {
+        if !RuleTree::has_starting_style(style.rules()) {
             return None;
         }
         let inputs = CascadeInputs {
-            rules: Some(primary_style.rules().clone()),
-            visited_rules: primary_style.visited_rules().cloned(),
-            flags: primary_style.flags.for_cascade_inputs(),
+            rules: Some(style.rules().clone()),
+            visited_rules: style.visited_rules().cloned(),
+            flags: style.flags.for_cascade_inputs(),
             included_cascade_flags: RuleCascadeFlags::STARTING_STYLE,
         };
-        Some(self.cascade_style_and_visited_with_default_parents(inputs))
+        Some(match pseudo {
+            Some((pseudo, originating_style)) => self
+                .cascade_style_and_visited_for_pseudo_with_default_parents(
+                    inputs,
+                    pseudo,
+                    originating_style,
+                ),
+            None => self.cascade_style_and_visited_with_default_parents(inputs),
+        })
     }
 
     /// If there is no transition rule in the ComputedValues, it returns None.

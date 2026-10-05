@@ -21,13 +21,13 @@
 "layout.css.font-tech.enabled" = false
 "layout.css.grid-template-masonry-value.enabled" = false
 "layout.css.grid-template-subgrid-value.enabled" = false
-"layout.css.has-selector.enabled" = false
+"layout.css.has-selector.enabled" = true
 "layout.css.light-dark.images.enabled" = false
 "layout.css.line-clamp.enabled" = false
 "layout.css.margin-rules.enabled" = false
 "layout.css.marker.restricted" = true
 "layout.css.motion-path-url.enabled" = false
-"layout.css.nth-child-of.enabled" = false
+"layout.css.nth-child-of.enabled" = true
 "layout.css.outline-offset.snapping" = 1
 "layout.css.overflow-moz-hidden-unscrollable.enabled" = false
 "layout.css.progress-function.enabled" = false
@@ -35,7 +35,7 @@
 "layout.css.revert-rule.enabled" = true
 "layout.css.scroll-driven-animations.enabled" = false
 "layout.css.scroll-state.enabled" = false
-"layout.css.starting-style-at-rules.enabled" = false
+"layout.css.starting-style-at-rules.enabled" = true
 "layout.css.stretch-size-keyword.enabled" = true
 "layout.css.style-queries.enabled" = false
 "layout.css.stylo-local-work-queue.in-main-thread" = 32
