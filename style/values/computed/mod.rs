@@ -15,10 +15,12 @@ use super::generics::{self, GreaterThanOrEqualToOne, NonNegative, ZeroToOne};
 use super::specified;
 use super::{CSSFloat, CSSInteger};
 use crate::computed_value_flags::ComputedValueFlags;
-use crate::context::QuirksMode;
+use crate::context::{QuirksMode, TreeCountingCaches};
 use crate::custom_properties::ComputedCustomProperties;
 use crate::derives::*;
 use crate::device::Device;
+use crate::dom::DummyElementContext;
+use crate::dom::ElementContext;
 use crate::font_metrics::{FontMetrics, FontMetricsOrientation};
 #[cfg(feature = "gecko")]
 use crate::properties;
@@ -48,7 +50,7 @@ pub use self::animation::{
     AnimationRangeStart, AnimationTimeline, ScrollAxis, TimelineName, TransitionBehavior,
     TransitionProperty, ViewTimelineInset, ViewTransitionClass, ViewTransitionName,
 };
-pub use self::background::{BackgroundRepeat, BackgroundSize};
+pub use self::background::{BackgroundClip, BackgroundRepeat, BackgroundSize};
 pub use self::basic_shape::FillRule;
 pub use self::border::{
     BorderCornerRadius, BorderImageRepeat, BorderImageSideWidth, BorderImageSlice,
@@ -57,10 +59,10 @@ pub use self::border::{
 pub use self::box_::{
     AlignmentBaseline, Appearance, BaselineShift, BaselineSource, BreakBetween, BreakWithin, Clear,
     Contain, ContainIntrinsicSize, ContainerName, ContainerType, ContentVisibility, Display,
-    DominantBaseline, Float, LineClamp, Overflow, OverflowAnchor, OverflowClipMargin,
+    DominantBaseline, Float, LineClamp, MarginTrim, Overflow, OverflowAnchor, OverflowClipMargin,
     OverscrollBehavior, Perspective, PositionProperty, Resize, ScrollSnapAlign, ScrollSnapAxis,
-    ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, TouchAction, WillChange,
-    WritingModeProperty, Zoom,
+    ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarInset,
+    TouchAction, WillChange, WritingModeProperty, Zoom,
 };
 pub use self::color::{
     Color, ColorOrAuto, ColorPropertyValue, ColorScheme, ForcedColorAdjust, PrintColorAdjust,
@@ -74,12 +76,12 @@ pub use self::flex::FlexBasis;
 pub use self::font::{FontFamily, FontLanguageOverride, FontPalette, FontStyle};
 pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
 pub use self::font::{
-    FontSize, FontSizeAdjust, FontStretch, FontSynthesis, FontSynthesisStyle, LineHeight,
+    FontSize, FontSizeAdjust, FontSynthesis, FontSynthesisStyle, FontWidth, LineHeight,
 };
 pub use self::font::{FontVariantAlternates, FontWeight};
 pub use self::font::{FontVariantEastAsian, FontVariationSettings};
 pub use self::font::{MathDepth, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextScale};
-pub use self::image::{Gradient, Image, ImageRendering, LineDirection};
+pub use self::image::{Gradient, Image, ImageDecoding, ImageRendering, LineDirection};
 pub use self::length::{CSSPixelLength, NonNegativeLength};
 pub use self::length::{Length, LengthOrNumber, LengthPercentage, NonNegativeLengthOrNumber};
 pub use self::length::{LengthOrAuto, LengthPercentageOrAuto, Margin, MaxSize, Size};
@@ -89,6 +91,7 @@ pub use self::list::Quotes;
 pub use self::motion::{OffsetPath, OffsetPosition, OffsetRotate};
 pub use self::outline::OutlineStyle;
 pub use self::page::{PageName, PageOrientation, PageSize, PageSizeOrientation, PaperSize};
+pub use self::param::LinkParameters;
 pub use self::percentage::{NonNegativePercentage, Percentage};
 pub use self::position::AnchorFunction;
 pub use self::position::AnchorName;
@@ -101,7 +104,7 @@ pub use self::position::PositionTryOrder;
 pub use self::position::PositionVisibility;
 pub use self::position::ScopedName;
 pub use self::position::{
-    GridAutoFlow, GridTemplateAreas, MasonryAutoFlow, Position, PositionOrAuto, ZIndex,
+    FlexWrap, GridAutoFlow, GridTemplateAreas, MasonryAutoFlow, Position, PositionOrAuto, ZIndex,
 };
 pub use self::position::{PositionArea, PositionAreaKeyword};
 pub use self::ratio::Ratio;
@@ -122,6 +125,7 @@ pub use self::text::{
 pub use self::time::Time;
 pub use self::transform::{Rotate, Scale, Transform, TransformBox, TransformOperation};
 pub use self::transform::{TransformOrigin, TransformStyle, Translate};
+pub use self::tree_counting::TreeCountingResult;
 #[cfg(feature = "gecko")]
 pub use self::ui::CursorImage;
 pub use self::ui::{
@@ -156,6 +160,7 @@ pub mod list;
 pub mod motion;
 pub mod outline;
 pub mod page;
+pub mod param;
 pub mod percentage;
 pub mod position;
 pub mod ratio;
@@ -166,6 +171,7 @@ pub mod table;
 pub mod text;
 pub mod time;
 pub mod transform;
+pub mod tree_counting;
 pub mod ui;
 pub mod url;
 
@@ -228,13 +234,20 @@ pub struct Context<'a> {
 
     /// Container size query for this context.
     container_size_query: RefCell<ContainerSizeQuery<'a>>,
+
+    /// Element context for the element being styled, used to resolve tree-counting functions
+    /// (`sibling-index()`, `sibling-count()`) and attribute values (`attr()`).
+    element_context: &'a dyn ElementContext,
+
+    /// Caches for evaluation of tree-counting functions.
+    pub tree_counting_caches: RefCell<&'a mut TreeCountingCaches>,
 }
 
 impl<'a> Context<'a> {
     /// Lazily evaluate the container size query, returning the result.
     pub fn get_container_size_query(&self) -> ContainerSizeQueryResult {
         let mut resolved = self.container_size_query.borrow_mut();
-        resolved.get().clone()
+        resolved.get()
     }
 
     /// Creates a suitable context for media query evaluation, in which
@@ -245,6 +258,7 @@ impl<'a> Context<'a> {
         F: FnOnce(&Context) -> R,
     {
         let mut conditions = RuleCacheConditions::default();
+        let mut tree_counting_caches = TreeCountingCaches::default();
         let context = Context {
             builder: StyleBuilder::for_inheritance(device, None, None, None),
             cached_system_font: None,
@@ -258,6 +272,8 @@ impl<'a> Context<'a> {
             scope: CascadeLevel::same_tree_author_normal(),
             included_cascade_flags: RuleCascadeFlags::empty(),
             container_size_query: RefCell::new(ContainerSizeQuery::none()),
+            element_context: &DummyElementContext {},
+            tree_counting_caches: RefCell::new(&mut tree_counting_caches),
         };
         f(&context)
     }
@@ -269,19 +285,21 @@ impl<'a> Context<'a> {
         stylist: Option<&Stylist>,
         container_info_and_style: Option<(ContainerInfo, Arc<ComputedValues>)>,
         container_size_query: ContainerSizeQuery,
+        element_context: &dyn ElementContext,
         f: F,
     ) -> R
     where
         F: FnOnce(&Context) -> R,
     {
         let mut conditions = RuleCacheConditions::default();
+        let mut tree_counting_caches = TreeCountingCaches::default();
 
         let (container_info, style) = match container_info_and_style {
             Some((ci, s)) => (Some(ci), Some(s)),
             None => (None, None),
         };
 
-        let style = style.as_ref().map(|s| &**s);
+        let style = style.as_deref();
         let quirks_mode = device.quirks_mode();
         let context = Context {
             builder: StyleBuilder::for_inheritance(device, stylist, style, None),
@@ -296,6 +314,8 @@ impl<'a> Context<'a> {
             scope: CascadeLevel::same_tree_author_normal(),
             included_cascade_flags: RuleCascadeFlags::empty(),
             container_size_query: RefCell::new(container_size_query),
+            element_context,
+            tree_counting_caches: RefCell::new(&mut tree_counting_caches),
         };
 
         f(&context)
@@ -308,6 +328,8 @@ impl<'a> Context<'a> {
         rule_cache_conditions: &'a mut RuleCacheConditions,
         container_size_query: ContainerSizeQuery<'a>,
         mut included_cascade_flags: RuleCascadeFlags,
+        element_context: &'a dyn ElementContext,
+        tree_counting_caches: &'a mut TreeCountingCaches,
     ) -> Self {
         if builder
             .flags()
@@ -328,6 +350,8 @@ impl<'a> Context<'a> {
             scope: CascadeLevel::same_tree_author_normal(),
             included_cascade_flags,
             container_size_query: RefCell::new(container_size_query),
+            element_context,
+            tree_counting_caches: RefCell::new(tree_counting_caches),
         }
     }
 
@@ -337,6 +361,8 @@ impl<'a> Context<'a> {
         quirks_mode: QuirksMode,
         rule_cache_conditions: &'a mut RuleCacheConditions,
         container_size_query: ContainerSizeQuery<'a>,
+        element_context: &'a dyn ElementContext,
+        tree_counting_caches: &'a mut TreeCountingCaches,
     ) -> Self {
         Self {
             builder,
@@ -351,6 +377,8 @@ impl<'a> Context<'a> {
             scope: CascadeLevel::same_tree_author_normal(),
             included_cascade_flags: RuleCascadeFlags::empty(),
             container_size_query: RefCell::new(container_size_query),
+            element_context,
+            tree_counting_caches: RefCell::new(tree_counting_caches),
         }
     }
 
@@ -358,6 +386,7 @@ impl<'a> Context<'a> {
     pub fn new_for_initial_at_property_value(
         stylist: &'a Stylist,
         rule_cache_conditions: &'a mut RuleCacheConditions,
+        tree_counting_caches: &'a mut TreeCountingCaches,
     ) -> Self {
         Self {
             builder: StyleBuilder::new(stylist.device(), Some(stylist), None, None, None, false),
@@ -375,6 +404,8 @@ impl<'a> Context<'a> {
             scope: CascadeLevel::same_tree_author_normal(),
             included_cascade_flags: RuleCascadeFlags::empty(),
             container_size_query: RefCell::new(ContainerSizeQuery::none()),
+            element_context: &DummyElementContext {},
+            tree_counting_caches: RefCell::new(tree_counting_caches),
         }
     }
 
@@ -385,7 +416,7 @@ impl<'a> Context<'a> {
 
     /// Get the inherited custom properties map.
     pub fn inherited_custom_properties(&self) -> &ComputedCustomProperties {
-        &self.builder.inherited_custom_properties()
+        self.builder.inherited_custom_properties()
     }
 
     /// Whether the style is for the root element.
@@ -444,6 +475,44 @@ impl<'a> Context<'a> {
             .au_viewport_size_for_viewport_unit_resolution(variant)
     }
 
+    fn resolve_tree_counting_result(&self) -> TreeCountingResult {
+        // https://drafts.csswg.org/css-values-5/#tree-counting
+        // > A tree-counting function is a type of loosely-matched tree-scoped reference.
+        //
+        // As a loosely-matched reference, the tree-counting function can only match if
+        // the declaration is in the same or descendant shadow tree of the element. It
+        // does not match if the declaration is in a containing tree, so it must return
+        // the default sibling index and count of 1.
+        if self
+            .current_scope()
+            .shadow_order()
+            .is_in_same_or_containing_tree()
+        {
+            return TreeCountingResult::default();
+        }
+
+        self.tree_counting_caches
+            .borrow_mut()
+            .get_or_compute(self.element_context)
+    }
+
+    /// Returns the number of siblings of the element that matches the declaration
+    /// (including the element itself). Also marks the style as depending on sibling-count().
+    pub fn query_sibling_count(&self) -> u32 {
+        self.builder
+            .add_flags(ComputedValueFlags::USES_SIBLING_COUNT);
+        self.resolve_tree_counting_result().sibling_count
+    }
+
+    /// Returns the 1-based index of the element that matches the declaration amongst its
+    /// siblings. Also marks the style as depending on sibling-index().
+    pub fn query_sibling_index(&self) -> u32 {
+        self.builder
+            .add_flags(ComputedValueFlags::USES_SIBLING_INDEX);
+        self.rule_cache_conditions.borrow_mut().set_uncacheable();
+        self.resolve_tree_counting_result().sibling_index
+    }
+
     /// Whether we're in a media or container query.
     pub fn in_media_or_container_query(&self) -> bool {
         self.in_media_query || self.in_container_query
@@ -465,7 +534,6 @@ impl<'a> Context<'a> {
     }
 
     /// Apply text-zoom if enabled.
-    #[cfg(feature = "gecko")]
     pub fn maybe_zoom_text(&self, size: CSSPixelLength) -> CSSPixelLength {
         if self
             .style()
@@ -477,12 +545,6 @@ impl<'a> Context<'a> {
         } else {
             size
         }
-    }
-
-    /// (Servo doesn't do text-zoom)
-    #[cfg(feature = "servo")]
-    pub fn maybe_zoom_text(&self, size: CSSPixelLength) -> CSSPixelLength {
-        size
     }
 }
 
